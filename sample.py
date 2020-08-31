@@ -4,12 +4,17 @@ Created on Wed Aug 26 20:07:43 2020
 
 @author: 赵匡是
 """
+from .exceptions import ModeError, LackOfParameterError
 
 import six
 import json
+import logging
 import numpy as np
 import tableprint as tp
 from sklearn.model_selection import ShuffleSplit
+
+def flatten(seq):
+    return [i for a in seq for i in a]
 
 def pad_sequences(sequences, maxlen=None, dtype='float32',
                   padding='pre', truncating='pre', value=-1.):
@@ -109,19 +114,17 @@ def pad_sequences(sequences, maxlen=None, dtype='float32',
 
 class Sample(object):
     def __init__(self, unit='epoch', tmin=0, tmax=0, n_splits=10,
-                 test_size=0.1, epoch_padding=False, data_padding=None):
+                 test_size=0.1, class_balance=True, data_balance=False,
+                 epoch_padding=False, data_padding=None):
         self.set_unit(unit)
         self.set_timespan(tmin, tmax)
         self.set_n_splits(n_splits)
         self.set_test_size(test_size)
+        self.set_class_balance(class_balance)
+        self.set_data_balance(data_balance)
         self.set_epoch_padding(epoch_padding)
-        if data_padding is None:
-            if self.get_unit() == 'data':
-                self.set_data_padding(True)
-            else:
-                self.set_data_padding(False)
-        else:
-            self.set_data_padding(data_padding)
+        self.set_data_padding(data_padding)
+        self.__editable = True
 
     def set_unit(self, unit):
         '''
@@ -142,12 +145,14 @@ class Sample(object):
         If `unit == \'epoch\'` , the first dimension of sampled `x` will be
         \'epoch\'. Then if you use `condition` as sampled `y`, 
         '''
+        self.__check_editable()
         self.unit = unit
 
     def get_unit(self):
         return self.unit
 
     def set_timespan(self, tmin, tmax):
+        self.__check_editable()
         self.tmin = tmin
         self.tmax = tmax
 
@@ -171,6 +176,7 @@ class Sample(object):
             If you don\'t want to cross validation, you can set `n_splits=1`.
 
         '''
+        self.__check_editable()
         self.n_splits = n_splits
 
     def get_n_splits(self):
@@ -187,26 +193,54 @@ class Sample(object):
             of the dataset to include in the test split.
 
         '''
+        self.__check_editable()
         self.test_size = test_size
 
     def get_test_size(self):
         return self.test_size
 
+    def set_class_balance(self, class_balance):
+        self.__check_editable()
+        self.class_balance = class_balance
+
+    def get_class_balance(self):
+        return self.class_balance
+
+    def set_data_balance(self, data_balance):
+        self.__check_editable()
+        if data_balance and self.unit == 'data':
+            self.data_balance = False
+            raise ValueError('you cannot set `data_balance` as True while '
+                             'primary unit is `data`. Please use '
+                             '`Sample.set_unit(\'epoch\')` first, then use '
+                             '`Sample.set_data_balance(True)` again')
+        else:
+            self.data_balance = data_balance
+
+    def get_data_balance(self):
+        return self.data_balance
+
     def set_epoch_padding(self, epoch_padding):
+        self.__check_editable()
         self.epoch_padding = epoch_padding
 
     def set_data_padding(self, data_padding, max_len = None):
-        if self.unit == 'epoch':
-            self.data_padding = False
-        elif self.unit == 'data':
-            self.data_padding = True
+        self.__check_editable()
+        if data_padding is None:
+            if self.unit == 'epoch':
+                self.data_padding = False
+            elif self.unit == 'data':
+                self.data_padding = True
+        else:
+            self.data_padding = data_padding
         self.max_len = max_len
         
     def set_x(self, x):
         # 不强求类型。可以是dataset的label甚至是condition(比如用很多condition来判断疾病(age, sex)→diagnose
+        self.__check_editable()
         if isinstance(x, str):
             self.x = [x]
-        elif isinstance(feature, list):
+        elif isinstance(x, list):
             self.x = x
 
     def get_x(self):
@@ -217,6 +251,7 @@ class Sample(object):
             
     def set_y(self, y):
         # unit是data就不是epoched，unit是epoch就是epoched。或者说，如果unit是data，就从condition里找，如果unit是epoch就从label里找。
+        self.__check_editable()
         if isinstance(y, str):
             self.y = [y]
         elif isinstance(y, list):
@@ -237,6 +272,8 @@ class Sample(object):
                    ['tmax', self.get_tmax()],
                    ['n_splits', self.get_n_splits],
                    ['test_size', self.get_test_size()],
+                   ['class_balance', self.get_class_balance()],
+                   ['data_balance', self.get_data_balance()],
                    ['epoch_padding', 'True' if self.epoch_padding else 'False'],
                    ['data_padding', 'True' if self.data_padding else 'False'],
                    ['max_len', self.max_len],
@@ -251,7 +288,9 @@ class Sample(object):
             content = json.load(f)
         sample = Sample(unit=content['unit'], tmin=content['tmin'],
                         tmax=content['tmax'], n_splits=content['n_splits'],
-                        test_size=content['test_size'], 
+                        test_size=content['test_size'],
+                        class_balance=content['class_balance'],
+                        data_balance=content['data_balance'],
                         epoch_padding=content['epoch_padding'],
                         data_padding=content['data_padding'])
         sample.set_data_padding(content['data_padding'],
@@ -260,12 +299,13 @@ class Sample(object):
         sample.set_y(content['y'])
         return sample
 
-    def save(fpath):
+    def save(self, fpath):
         content = {'unit' : self.get_unit(),
                    'tmin' : self.get_tmin,
                    'tmax' : self.get_tmax(),
                    'n_splits' : self.get_n_splits,
                    'test_size' : self.get_test_size(),
+                   'balance' : 'True' if self.get_balance() else 'False',
                    'epoch_padding' : 'True' if self.epoch_padding else 'False',
                    'data_padding' : 'True' if self.data_padding else 'False',
                    'max_len' : self.max_len,
@@ -274,10 +314,30 @@ class Sample(object):
         with open(fpath, 'w') as f:
             json.dump(content, f)
 
+    def __check_editable(self):
+        if not self.__editable:
+            raise AssertionError('You cannot edit parameters of this object '
+                                 'after specifying dataset. In another words, '
+                                 'any change after using `Sample.from_dataset`'
+                                 ' is not allowed.')
+
+    def __check_mode(self, current_mode):
+        if current_mode != self.mode:
+            if current_mode == 'train':
+                raise ModeError('You cannot use `train_set()` or `test_set()` '
+                                'in `predict` mode. Please try `Sample.sample`'
+                                '.')
+            elif current_mode == 'predict':
+                raise ModeError('You cannot use `sample()` in `train` mode. '
+                                'Please try `Sample.train_set()` and '
+                                '`Sample.test_set()` to sample them '
+                                'respectively.')
+
     def check_dataset(self):
         # check `x`
         if self.get_x() is None:
-            raise AssertionError('`x` hasn\'t set. Please use `set_x` first.')
+            raise LackOfParameterError('`x` hasn\'t set. Please use `set_x` '
+                                       'first.')
         else:
             for item in self.get_x():
                 # check if `x` in dataset.elements
@@ -295,8 +355,8 @@ class Sample(object):
         # check `y`
         if self.mode == 'train':  # in training mode, `y` must provided
             if self.get_y() is None:
-                raise AssertionError('`y` hasn\'t set.'
-                                     'Please use `set_y` first.')
+                raise LackOfParameterError('`y` hasn\'t set. '
+                                           'Please use `set_y` first.')
             else:
                 for item in self.get_y():
                     # check if `y` in dataset.elements
@@ -329,6 +389,7 @@ class Sample(object):
             self.mode = 'train'
         elif mode.lower() == 'predict':
             self.mode = 'predict'
+            self.y = None
             if self.data_padding and self.max_len is None:
                 raise ValueError('In mode `predict`, max_len of data_padding'+
                                  ' must be set.')
@@ -340,6 +401,7 @@ class Sample(object):
 
         # set dataset
         self.dataset = dataset
+        self.dataset.shape_check()
         if data_selection is None and self.unit == 'epoch':
             self.data_selection = self.dataset.select_epochs()
         elif data_selection is None and self.unit == 'data':
@@ -351,9 +413,20 @@ class Sample(object):
         if self.data_padding and self.max_len is None:
             epochs = self.dataset.epochs_per_data(self.data_list())
             self.max_len = max(epochs)
+        
+        # lock the config
+        self.editable = False
 
     def data_list(self):
-        # TODO : self.data_selection不再是dict了！变成二元组(data_name, epoch)
+        '''
+        Get data list from all the epochs or data.
+
+        Returns
+        -------
+        list
+            The data list.
+
+        '''
         rst = set()
         for item in self.data_selection:
             if isinstance(item, str):
@@ -362,8 +435,152 @@ class Sample(object):
                 rst.add(item[0])
         return list(rst)
 
-    def next_subgroup():
-        # 
-        pass
+    def subgroups(self):
+        '''
+        Split data or epochs by classes into subgroups.
+        Generate `Sample.classes`, which is a `dict` of different classes.
+        '''
+        classes = self.dataset.stat_classes(self.get_y())
+        self.classes = {}
+        for c in classes:
+            self.classes[c] = [i for i in classes[c] 
+                               if i in self.data_selection]  # intersection of
+                                                             # data_selection
+                                                             # and classes
+            logging.info(classes[c])
+            logging.info(self.data_selection)
 
-然后就是各种generator、padding
+    def shuffle_split(self):
+        '''
+        Generate generators for each of classes.
+
+        After using `Sample.shuffle_split`, subgroups will be split into 
+        `Sample.get_n_splits()` pieces, and in each piece 
+        `Sample.get_test_size()` of the data will act as test set.
+
+        '''
+        ss = ShuffleSplit(self.get_n_splits(), self.get_test_size())
+        self.k_fold = {}
+        for c in self.classes:
+            self.__k_fold[c] = ss.split(self.classes[c])
+
+    def next_fold(self):
+        # start a new iteration
+        train_set = []
+        test_set = []
+        # append train_set and test_set of each class
+        for c in self.k_fold:
+            train, test = next(self.__k_fold[c])
+            train = [self.classes[c][i] for i in train]
+            test = [self.classes[c][i] for i in test]
+            train_set.append(train)
+            test_set.append(test)
+        if self.get_class_balance() and not self.get_data_balance():
+            # compute max_len of train_set and test_set
+            train_len = max(len(i) for i in train_set)
+            test_len = max(len(i) for i in test_set)
+            # balance every class
+            for ts in train_set:
+                idx = np.random.choice(range(len(ts)), train_len)
+                ts = [ts[i] for i in idx]
+            for tt in test_set:
+                idx = np.random.choice(range(len(tt)), test_len)
+                tt = [tt[i] for i in idx]
+            train_set = flatten(train_set)
+            test_set = flatten(test_set)
+        elif self.get_data_balance() and not self.get_class_balance():
+            # this condition assert self.unit == 'epoch'
+            # don't care about classes
+            train_set = flatten(train_set)
+            test_set = flatten(test_set)
+            # and discriminate train_set and test_set by `data_name`
+            train_set = list(self.__discriminate_data(train_set).values())
+            test_set = list(self.__discriminate_data(test_set).values())
+            # compute max_len of train_set and test_set
+            train_len = max(len(i) for i in train_set)
+            test_len = max(len(i) for i in test_set)
+            # balance every class
+            for ts in train_set:
+                idx = np.random.choice(range(len(ts)), train_len)
+                ts = [ts[i] for i in idx]
+            for tt in test_set:
+                idx = np.random.choice(range(len(tt)), test_len)
+                tt = [tt[i] for i in idx]
+            train_set = flatten(train_set)
+            test_set = flatten(test_set)
+        elif self.get_class_balance() and self.get_data_balance():
+            tem = []
+            for ts in train_set:
+                tem.extend(list(self.__discriminate_data(ts).values()))
+            train_set = tem
+            tem = []
+            for tt in test_set:
+                tem.extend(list(self.__discriminate_data(tt).values()))
+            test_set = tem
+            # compute max_len of train_set and test_set
+            train_len = max(len(i) for i in train_set)
+            test_len = max(len(i) for i in test_set)
+            # balance every class
+            for ts in train_set:
+                idx = np.random.choice(range(len(ts)), train_len)
+                ts = [ts[i] for i in idx]
+            for tt in test_set:
+                idx = np.random.choice(range(len(tt)), test_len)
+                tt = [tt[i] for i in idx]
+            train_set = flatten(train_set)
+            test_set = flatten(test_set)
+        else:
+            train_set = flatten(train_set)
+            test_set = flatten(test_set)
+        self.train = train_set
+        self.test = test_set
+
+    def __discriminate_data(self, ori):
+        rst = {}
+        for t in ori:
+            if t[0] not in rst:
+                rst[t[0]] = []
+            rst[t[0]].append(t)
+        return rst
+
+    def train_set(self):
+        self.__check_mode('train')
+        for item in self.train:
+            if self.get_unit() == 'epoch':
+                yield self.dataset.sample_epoch(
+                    item[0],
+                    item[1],
+                    (self.get_x(), self.get_y()),
+                    tmin=self.get_tmin(),
+                    tmax=self.get_tmax(), 
+                    epoch_padding=self.epoch_padding)
+            elif self.get_unit() == 'data':
+                yield self.dataset.sample_data(
+                    item,
+                    (self.get_x(), self.get_y()),
+                    tmin=self.get_tmin(),
+                    tmax=self.get_tmax(),
+                    data_padding=self.data_padding,
+                    max_len=self.max_len,
+                    epoch_padding=self.epoch_padding)
+
+    def test_set(self):
+        self.__check_mode('test')
+        for item in self.test:
+            if self.get_unit() == 'epoch':
+                yield self.dataset.sample_epoch(
+                    item[0],
+                    item[1],
+                    (self.get_x(), self.get_y()),
+                    tmin=self.get_tmin(),
+                    tmax=self.get_tmax(), 
+                    epoch_padding=self.epoch_padding)
+            elif self.get_unit() == 'data':
+                yield self.dataset.sample_data(
+                    item,
+                    (self.get_x(), self.get_y()),
+                    tmin=self.get_tmin(),
+                    tmax=self.get_tmax(),
+                    data_padding=self.data_padding,
+                    max_len=self.max_len,
+                    epoch_padding=self.epoch_padding)

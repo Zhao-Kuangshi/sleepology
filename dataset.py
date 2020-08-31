@@ -1477,6 +1477,46 @@ class Dataset(object):
                     rst[c].append((d, e))
         return rst
 
+    def sample_data(self, data_name, lst, tmin=0, tmax=0, data_padding=True,
+                    max_len=None, epoch_padding=False):
+        x, y = lst
+        x_samp = []
+        for i in x:
+            x_samp.append(self.sample_serial_x(data_name, i, tmin, tmax,
+                                               data_padding, max_len,
+                                               epoch_padding))
+        if len(x_samp) == 1:
+            x_samp = x_samp[0]
+        if y is None:
+            return x_samp
+        else:
+            y_samp = []
+            for i in y:
+                y_samp.append(self.get_condition(data_name, i))
+            if len(y_samp) == 1:
+                y_samp = y_samp[0]
+            return (x_samp, y_samp)
+
+    def sample_epoch(self, data_name, epoch, lst, tmin=0, tmax=0,
+                    epoch_padding=False):
+        x, y = lst
+        x_samp = []
+        for i in x:
+            x_samp.append(self.sample_epoched_x(data_name, epoch, i,
+                                                tmin, tmax, epoch_padding))
+        if len(x_samp) == 1:
+            x_samp = x_samp[0]
+        if y is None:
+            return x_samp
+        else:
+            y_samp = []
+            for i in y:
+                y_samp.append(self.sample_epoched_y(data_name, epoch, i))
+            if len(y_samp) == 1:
+                y_samp = y_samp[0]
+            return (x_samp, y_samp)
+
+
     def x(self, data_name=None, feature_name=None, tmin=0, tmax=0,
           padding=False, array_type=int):
         self.shape_check()
@@ -1532,20 +1572,25 @@ class Dataset(object):
             x_tem = x_tem[list(x_tem.keys())[0]]
         return x_tem
 
-    def x_element(self, data_name, epoch, feature_name, tmin = 0, tmax = 0, padding = False, array_type = int):
+    def sample_epoched_x(self, data_name, epoch, feature_name, tmin=0,
+                               tmax=0, padding=False, array_type=int):
+        
         if tmin == 0 and tmax == 0:
-            return self.__get_feature(data_name, epoch, feature_name)
+            if self.elements[feature_name] == 'feature':
+                return self.__get_feature(data_name, epoch, feature_name)
+            elif self.elements[feature_name] == 'label':
+                return self.__get_label(data_name, epoch, feature_name)
         else:
             data_length = len(self.get_epochs(data_name))
             logging.info('Data Length: ' + str(data_length))
             assert tmax >= 0
             assert abs(tmin) + tmax <= data_length # 不能padding的长度远大于数据长度
-            
-            epoch_list = self.get_epochs(name)
+
+            epoch_list = self.get_epochs(data_name)
             if epoch_list[epoch] < epoch_list[abs(tmin)]: # 前面不足
                 if padding: # 补零
-                    r = numpy.array([numpy.zeros(self.shape[feature])] * (abs(tmin) - epoch) 
-                        + [self.__get_feature(name, i, feature) for i in epoch_list[: epoch + tmax + 1]])
+                    r = numpy.array([numpy.zeros(self.shape[feature_name])] * (abs(tmin) - epoch) 
+                        + [self.__get_feature(name, i, feature_name) for i in epoch_list[: epoch + tmax + 1]])
             elif epoch_list[epoch] > epoch_list[data_length - tmax - 1]: # 后面不足
                 if padding:
                     r = numpy.array([self.__get_feature(name, i, feature) for i in epoch_list[epoch - abs(tmin) :]]
@@ -1602,18 +1647,6 @@ class Dataset(object):
         if len(label_name) == 1:
             y_tem = y_tem[list(y_tem.keys())[0]]
         return y_tem
-
-    def k_fold(self, n_splits, data_name = None, tmin = 0, tmax = 0, padding = False, array_type = int):
-        x = self.x(data_name, tmin, tmax, padding, array_type)
-        y = self.y(data_name, tmin, tmax, padding, array_type)
-        def gen():
-            for train_index, test_index in KFold(n_splits).split(x): # 返回int的list，包含dataset中哪些会作为训练集，哪些会作为测试集
-                train_data  = x[train_index]
-                train_label = y[train_index]
-                test_data  = x[test_index]
-                test_label = y[test_index]
-                yield (train_data, train_label), (test_data, test_label)
-        return tf.data.Dataset.from_generator(gen, ((tf.float32, tf.int32), (tf.float32, tf.int32)))
 
     def memory_usage(self, unit = 'GB'):
         if self.disk_mode:
