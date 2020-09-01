@@ -1562,62 +1562,6 @@ class Dataset(object):
                 y_samp = y_samp[0]
             return (x_samp, y_samp)
 
-
-    def x(self, data_name=None, feature_name=None, tmin=0, tmax=0,
-          padding=False, array_type=int):
-        self.shape_check()
-        if data_name is not None:
-            if isinstance(data_name, str):
-                total = [data_name]
-            elif isinstance(data_name, list):
-                total = data_name
-        else:
-            total = sorted(list(self.get_data()))
-        
-        x_tem = {}
-        if feature_name is None:
-            feature_name = self.features
-        elif not isinstance(feature_name, list):
-            feature_name = [feature_name]
-
-        for feature in feature_name:
-            # 所有数据集中循环
-            x_tem[feature] = []
-            for name in total:
-                if self.__get_state(name) == Dataset.PREPROCESSED:  # 2020-3-7 排除掉有ERROR的
-                    if tmin == 0 and tmax == 0:
-                        for epoch in self.get_epochs(name):
-                            x_tem[feature].append(self.__get_feature(name, epoch, feature))
-                    else:
-                        data_length = len(self.get_epochs(name))
-                        logging.info('Data Length: ' + str(data_length))
-                        assert tmax >= 0
-                        assert abs(tmin) + tmax <= data_length # 不能padding的长度远大于数据长度
-                        
-                        epoch = self.get_epochs(name)
-                        for t in range(data_length):
-                            if epoch[t] < epoch[abs(tmin)]: # 前面不足
-                                if padding: # 补零
-                                    x_tem[feature].append(
-                                            np.array([np.zeros(self.shape[feature])] * (abs(tmin) - t) 
-                                            + [self.__get_feature(name, i, feature) for i in epoch[: t + tmax + 1]]
-                                            ))
-                            elif epoch[t] > epoch[data_length - tmax - 1]: # 后面不足
-                                if padding:
-                                    x_tem[feature].append(
-                                            np.array([self.__get_feature(name, i, feature) for i in epoch[t - abs(tmin) :]]
-                                            + [np.zeros(self.shape[feature])] * (tmax + t + 1 - data_length)
-                                            ))
-                            else: # 正常情况
-                                x_tem[feature].append(np.array([self.__get_feature(name, i, feature) 
-                                    for i in epoch[t - abs(tmin) : t + tmax + 1]]))
-        # 添加形状
-        for k in x_tem.keys():
-            x_tem[k] = np.array(x_tem[k])
-        if len(feature_name) == 1:
-            x_tem = x_tem[list(x_tem.keys())[0]]
-        return x_tem
-
     def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
                                tmax=0, padding=False, array_type=int):
         '''当返回None时，跳过这个epoch'''
@@ -1749,54 +1693,6 @@ class Dataset(object):
                                  'is different from expected shape %s' %
                                  (trunc.shape[1:], sample_shape))
             x[-len(trunc):] = trunc
-
-    def y(self, data_name = None, label_name = None, tmin = 0, tmax = 0, padding = False, array_type = int):
-        # array_type为None时，则返回一个int
-        self.shape_check()
-        if data_name is not None:
-            if isinstance(data_name, str):
-                total = [data_name]
-            elif isinstance(data_name, list):
-                total = data_name
-        else:
-            total = sorted(list(self.get_data()))
-
-        y_tem = {}
-        # 所有数据集中循环
-        if label_name is None:
-            label_name = self.labels
-        elif not isinstance(label_name, list):
-            label_name = [label_name]
-
-        for label in label_name:
-            # 所有数据集中循环
-            y_tem[label] = []
-            for name in total:
-                if self.__get_state(name) == Dataset.PREPROCESSED: # 2020-3-7 排除掉有ERROR的
-                    if tmin == 0 and tmax == 0:
-                        for epoch in self.get_epochs(name):
-                            y_tem[label].append(self.label_dict[label].get_array(self.__get_label(name, epoch, label), array_type = array_type))
-                    else:
-                        data_length = len(self.get_epochs(name))
-                        assert tmax >= 0
-                        assert abs(tmin) + tmax <= data_length # 不能padding的长度远大于数据长度
-                        
-                        epoch = self.get_epochs(name)
-                        for t in range(data_length):
-                            if epoch[t] < epoch[abs(tmin)]: # 前面不足
-                                if padding: # 补零
-                                    y_tem[label].append(self.label_dict[label].get_array(self.__get_label(name, epoch[t], label), array_type = array_type))
-                            elif epoch[t] > epoch[data_length - tmax - 1]: # 后面不足
-                                if padding:
-                                    y_tem[label].append(self.label_dict[label].get_array(self.__get_label(name, epoch[t], label), array_type = array_type))
-                            else: # 正常情况
-                                y_tem[label].append(self.label_dict[label].get_array(self.__get_label(name, epoch[t], label), array_type = array_type))
-        # 添加形状
-        for k in y_tem.keys():
-            y_tem[k] = np.array(y_tem[k])
-        if len(label_name) == 1:
-            y_tem = y_tem[list(y_tem.keys())[0]]
-        return y_tem
 
     def memory_usage(self, unit = 'GB'):
         if self.disk_mode:
