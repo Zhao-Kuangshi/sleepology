@@ -4,7 +4,7 @@ Created on Wed Aug 26 20:07:43 2020
 
 @author: 赵匡是
 """
-from .exceptions import ModeError, LackOfParameterError
+from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError
 
 import six
 import json
@@ -546,41 +546,50 @@ class Sample(object):
     def train_set(self):
         self.__check_mode('train')
         for item in self.train:
-            if self.get_unit() == 'epoch':
-                yield self.dataset.sample_epoch(
-                    item[0],
-                    item[1],
-                    (self.get_x(), self.get_y()),
-                    tmin=self.get_tmin(),
-                    tmax=self.get_tmax(), 
-                    epoch_padding=self.epoch_padding)
-            elif self.get_unit() == 'data':
-                yield self.dataset.sample_data(
-                    item,
-                    (self.get_x(), self.get_y()),
-                    tmin=self.get_tmin(),
-                    tmax=self.get_tmax(),
-                    data_padding=self.data_padding,
-                    max_len=self.max_len,
-                    epoch_padding=self.epoch_padding)
+            try:
+                if self.get_unit() == 'epoch':
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding)
+                elif self.get_unit() == 'data':
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding)
+            except BrokenTimestepError:
+                continue
 
     def test_set(self):
         self.__check_mode('test')
         for item in self.test:
-            if self.get_unit() == 'epoch':
-                yield self.dataset.sample_epoch(
-                    item[0],
-                    item[1],
-                    (self.get_x(), self.get_y()),
-                    tmin=self.get_tmin(),
-                    tmax=self.get_tmax(), 
-                    epoch_padding=self.epoch_padding)
-            elif self.get_unit() == 'data':
-                yield self.dataset.sample_data(
-                    item,
-                    (self.get_x(), self.get_y()),
-                    tmin=self.get_tmin(),
-                    tmax=self.get_tmax(),
-                    data_padding=self.data_padding,
-                    max_len=self.max_len,
-                    epoch_padding=self.epoch_padding)
+            try:
+                if self.get_unit() == 'epoch':
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding)
+                elif self.get_unit() == 'data':
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding)
+            except BrokenTimestepError:
+                continue
+
+    def sample(self):
+        pass

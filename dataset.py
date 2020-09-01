@@ -6,14 +6,12 @@ Created on Sat Mar  7 11:31:23 2020
 """
 from .source import *
 from .utils import total_size
+from .exceptions import DataStateError, BrokenTimestepError
 
 import h5py
 import tempfile
-import numpy
+import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import tensorflow as tf
-from sklearn.model_selection import KFold
 from collections.abc import Iterable
 import math
 import os
@@ -26,81 +24,7 @@ os.environ["HDF5_USE_FILE_LOCKING"] = 'FALSE'
 
 package_root = os.path.dirname(os.path.abspath(__file__))
 
-# 修改日志 2019-7-29
-# 1. 增加了绘图功能，对每一个dataset的数据输出其各个导联的热图及对应的标签对输出的热图增加每一张热图所对应的导联名称；
-# 2. 增加了自动读取、计算数据时长的功能；
-# 3. 增加了频率选择，只选取[0.3, 35]赫兹的数据；
-# 4. 增加了OS的交互，对预处理数据有标准的输出路径结构；
-# 5. 增加了日志，在txt文件中输出数据概况。
-
-# 修改日志 2019-7-31
-# 1. 换用了新版的search_file函数；
-# 2. 输出channels行2列的图像，第0列为原数据的eeg_plot，第1列为热图。配色改为默认；
-# 3. 对能量谱先平方后加总；
-# 4. 对S变换后的结果取对数。
-
-# 修改日志 2019-10-6
-# 对预处理过程进行像edfx一样的改变
-
-# 功能日志 2019-12-10
-# 用来对长征101人数据进行第一次预处理（使用之前的预处理方式，不经改动）
-
-def hot_plot(data, label, save_fname, channel_list, raw_data=None, 
-             sampling_rate=None, extent=None):
-# 绘制二维输入的热图，如果输入的数据是二维，则只画一张热图。输入三维，则以第2维为index。
-# 规定第0维为时间，第1维为频率。
-# 2019-7-31 输出改为维度×2的图像，左侧一列显示原始数据，右侧一列显示热图。
-    subplot_num = 0
-    if len(data.shape) == 2: subplot_num = 1
-    elif len(data.shape)==3: subplot_num = data.shape[2]
-    else: raise TypeError('Input data invalid, please check!')
-    if (raw_data is None) or (sampling_rate is None) or (len(raw_data.shape) != (len(data.shape) - 1)):
-        fig,ax=plt.subplots(subplot_num, 1)
-        cm = None
-        if subplot_num == 1:
-            cm = ax.imshow(numpy.transpose(data), origin='lower',extent = extent)
-            ax.set(xlabel='time',ylabel='frequency', title = channel_list[0])
-            plt.colorbar(cm)
-        else:
-            for i in range(subplot_num):
-                cm = ax[i].imshow(numpy.transpose(data[:,:,i]), origin='lower',extent = extent)
-                ax[i].set(xlabel='time',ylabel='frequency', title = channel_list[i])
-                plt.colorbar(cm, ax = ax[i])
-    else:
-        # 2019-7-31 原始数据对照
-        fig = plt.figure(figsize = (18,8))
-        gs = gridspec.GridSpec(nrows = subplot_num, ncols = 6, figure = fig)
-        t = numpy.arange(0.0, len(raw_data) / sampling_rate, 1 / sampling_rate) # 时间序列，从0开始到data时长,间隔为采样率分之一
-        ax = [[None] * 2] * subplot_num
-        cm = None
-        if subplot_num == 1:
-            # 2019-7-31 raw_data
-            ax[0][0] = fig.add_subplot(gs[0, :-1])
-            ax[0][0].plot(t, raw_data, linewidth = 0.2)
-            ax[0][0].set(xlabel='time (s)', ylabel='voltage (μV)', title = channel_list[0])
-            # 2019-7-31 hot_plot
-            cm = ax[0][1].imshow(numpy.transpose(data), origin='lower',extent = extent) # 2019-9-29绘图前为data添加转置
-            ax[0][1] = fig.add_subplot(gs[0, -1])
-            ax[0][1].set(xlabel='time (s)',ylabel='frequency (Hz)', title = channel_list[0])
-            plt.colorbar(cm, ax = ax[0][1])
-        else:
-            for i in range(subplot_num):
-                # 2019-7-31 raw_data
-                ax[i][0] = fig.add_subplot(gs[i, :-1])
-                ax[i][0].plot(t, raw_data[:,i], linewidth = 0.2)
-                ax[i][0].set(xlabel='time (s)', ylabel='voltage (μV)', title = channel_list[i])
-                # 2019-7-31 hot_plot
-                ax[i][1] = fig.add_subplot(gs[i, -1])
-                cm = ax[i][1].imshow(numpy.transpose(data[:,:,i]), origin='lower',extent = extent) # 2019-9-29绘图前为data添加转置
-                ax[i][1].set(xlabel='time',ylabel='frequency', title = channel_list[i])
-                plt.colorbar(cm, ax = ax[i][1])
-    plt.suptitle('label:' + str(label))# 2019-9-27 检查无误
-    plt.savefig(save_fname)
-    plt.cla()
-    plt.clf()
-    plt.close('all')
-
-
+                               
 class ExceptionLogger(object):
     def __init__(self, dataset):
         self.create = False
@@ -144,7 +68,8 @@ class ExceptionLogger(object):
 
 class Procedure(object):
     '''
-        用于生成并保存对于每一个通道的处理方式、以及保存哪些通道。（只保留通道而不经任何处理的，preprocessing_method为accept） 2020-2-18
+        用于生成并保存对于每一个通道的处理方式、以及保存哪些通道。（只保留通道而不经任何处理的，
+        preprocessing_method为accept） 2020-2-18
         self.__proce = ['preprocessing_method', [channel_list], [param_list]]
         self.__proce[i]是每一个条目
         self.__proce[i][0]是方法名
@@ -174,7 +99,8 @@ class Procedure(object):
     
     def add_method(self, method, chan_list, param_list = None):
         # 2020-2-13 为已经存在的通道添加操作列表
-        if not isinstance(method, str) or not isinstance(chan_list, list) or not isinstance(param_list, list) and param_list is not None:
+        if not isinstance(method, str) or not isinstance(chan_list, list) \
+            or not isinstance(param_list, list) and param_list is not None:
             raise TypeError()
         else:
             self.__proce.append([method, chan_list, param_list])
@@ -207,7 +133,7 @@ class Procedure(object):
         return self.__proce
     
     def procedure(self):
-        # 2020-3-1 高阶函数，返回一个处理流程。低阶函数的输入是raw，输出是numpy.array
+        # 2020-3-1 高阶函数，返回一个处理流程。低阶函数的输入是raw，输出是np.ndarray
         ####################  未完待续  ####################
         def pipeline(data):
             for preprocessing_method, channel_list, param_list in self.__proce:
@@ -244,6 +170,9 @@ class LabelDict(object):
         if load_path is not None:
             self.load(load_path)
 
+    def shape(self):
+        return (self.length, )
+
     def labels(self):
         return list(self.label2array.keys())
 
@@ -257,23 +186,63 @@ class LabelDict(object):
         self.length += 1
     
     def get_array(self, label, array_type = int):
-        # 2020-4-18 如果array_type为None，直接返回数字
-        if not array_type:
+        '''
+        Get one-hot or N-hot array according to given label. If `array_type` is
+        `None`, the function will return a number directly.
+
+        **ONLY FOR INTERFACE, NOT RECOMMENDED**
+        If label is `None`, it represents a `padding` is requested. An array
+        filled with zero (if `array_type` is not None) or `-1` (if `array_type`
+        is None) will be return.
+
+        Parameters
+        ----------
+        label : str or list or None
+            A label in this LabelDict or a list of labels. If None, return a
+            padding array or `-1`.
+        array_type : type or None, optional
+            The type of elements in return array. The default and most
+            recommended is int. You should input directly a `type`, not a
+            `str`.
+            For example:
+                array_type=bool          (Correct)
+                array_type=\'bool\'      (Wrong)
+
+        Raises
+        ------
+        TypeError
+            Raised when you input an empty `label` parameter.
+
+        Returns
+        -------
+        int or np.ndarray
+            return `int` if array_type is None.
+            else return one-hot or N-hot `np.ndarray`. 
+
+        '''
+        # if array_type is None, return a number directly
+        if array_type is None:
             if isinstance(label, Iterable):
                 if len(label) != 1:
                     raise TypeError(
-                        'make sure your request is single-label when array_type'
-                        ' is None.')
-            return self.label2array[label]
-        
-        # 2020-3-2 返回N-hot矩阵
+                        'make sure your request is single-label when'
+                        ' array_type is None.')
+            elif label is None:  # request padding
+                return -1  # `-1` represents padding
+            else:
+                return self.label2array[label]
+        # return N-hot array
         else:
-            if len(label) == 0:
+            if isinstance(label, Iterable) and len(label) == 0:
                 raise TypeError('at least 1 label should be given.')
-            arr = numpy.array([False] * self.length)
-            for l in label:
-                arr[self.label2array[l]] = True
-            return arr.astype(array_type)
+            elif label is None:  # request padding
+                arr = np.array([False] * self.length)
+                return arr.astype(array_type)
+            else:
+                arr = np.array([False] * self.length)
+                for l in label:
+                    arr[self.label2array[l]] = True
+                return arr.astype(array_type)
 
     def get_label(self, array):
         if len(array) != self.length:
@@ -484,8 +453,8 @@ class Dataset(object):
         main_source = list(feature_source.keys())[0]
         if data_name is None:
             data_name = feature_source[main_source].name
-        if data_name in self.get_data() and (self.get_source(data_name, main_source).path 
-                                      == feature_source[main_source].path): 
+        if data_name in self.get_data() and (self.get_source(data_name,\
+            main_source).path == feature_source[main_source].path): 
             pass
         else: 
             if data_name in self.get_data(): 
@@ -574,17 +543,23 @@ class Dataset(object):
     def select_data(self, condition_type = None, condition_value = None):
         # 删除所有文件中指定label的数据
         if condition_type is None and condition_value is None:
-            rst = set(self.get_data())
+            rst = set()
+            for data_name in self.get_data():
+                if self.__get_state(data_name) < Dataset.PREPROCESSED:
+                    continue
+                logging.info(data_name)
+                rst.add(data_name)
         elif condition_type is not None and condition_value is not None:
             rst = set()
             if not isinstance(condition_value, list):
                 condition_value = [condition_value]
             for l in condition_value:
                 for data_name in self.get_data():
-                    if self.__get_state(data_name) != Dataset.ERROR:
-                        logging.info(data_name)
-                        if self.get_condition(data_name, condition_type) == l:
-                            rst.add(data_name)
+                    if self.__get_state(data_name) < Dataset.PREPROCESSED:
+                        continue
+                    logging.info(data_name)
+                    if self.get_condition(data_name, condition_type) == l:
+                        rst.add(data_name)
         else:
             raise TypeError('You should input all of or none of\n' + 
                             '`condition_type` and `condition_value`')
@@ -619,7 +594,8 @@ class Dataset(object):
     ### CONDITION ###
     def has_condition(self, data_name, condition_type = None):
         if self.disk_mode:
-            return self.__df_has_condition(self.disk_file(), data_name, condition_type)
+            return self.__df_has_condition(self.disk_file(),
+                                           data_name, condition_type)
         else:
             return self.__mm_has_condition(data_name, condition_type)
 
@@ -635,13 +611,15 @@ class Dataset(object):
         if condition_type is None:
             return 'CONDITION' in disk_file['dataset'][data_name].keys()
         elif 'CONDITION' in disk_file['dataset'][data_name]:
-            return condition_type in disk_file['dataset'][data_name]['CONDITION'].attrs
+            return condition_type in disk_file['dataset'][data_name]\
+                ['CONDITION'].attrs
         else:
             return False
 
     def set_condition(self, data_name, condition_type, condition_label):
         if self.disk_mode:
-            self.__df_set_condition(self.disk_file(), data_name, condition_type, condition_label)
+            self.__df_set_condition(self.disk_file(), data_name,
+                                    condition_type, condition_label)
         else:
             self.__mm_set_condition(data_name, condition_type, condition_label)
 
@@ -651,20 +629,24 @@ class Dataset(object):
         self.__new_condition(condition_type)
         self.dataset[data_name]['CONDITION'][condition_type] = condition_label
 
-    def __df_set_condition(self, disk_file, data_name, condition_type, condition_label):
+    def __df_set_condition(self, disk_file, data_name, condition_type,
+                           condition_label):
         if not self.__df_has_condition(disk_file, data_name):
             disk_file['dataset'][data_name].create_group('CONDITION')
         self.__new_condition(condition_type)
-        disk_file['dataset'][data_name]['CONDITION'].attrs[condition_type] = condition_label
+        disk_file['dataset'][data_name]['CONDITION'].\
+            attrs[condition_type] = condition_label
 
     def get_condition(self, data_name, condition_type = None):
         if self.disk_mode:
-            return self.__df_get_condition(self.disk_file(), data_name, condition_type)
+            return self.__df_get_condition(self.disk_file(), data_name,
+                                           condition_type)
         else:
             return self.__mm_get_condition(data_name, condition_type)
 
     def __mm_get_condition(self, data_name, condition_type = None):
-        if condition_type is None and self.__mm_has_condition(data_name, condition_type):
+        if condition_type is None and self.__mm_has_condition(data_name,
+                                                              condition_type):
             return self.dataset[data_name]['CONDITION']
         elif self.has_condition(data_name, condition_type):
             return self.dataset[data_name]['CONDITION'][condition_type]
@@ -672,13 +654,17 @@ class Dataset(object):
             return False
 
     def __df_get_condition(self, disk_file, data_name, condition_type = None):
-        if condition_type is None and self.__df_has_condition(disk_file, data_name, condition_type):
+        if condition_type is None and \
+            self.__df_has_condition(disk_file, data_name, condition_type):
             r = {}
-            for condition_type in disk_file['dataset'][data_name]['CONDITION'].attrs:
-                r[condition_type] = disk_file['dataset'][data_name]['CONDITION'].attrs[condition_type]
+            for condition_type in disk_file['dataset']\
+                [data_name]['CONDITION'].attrs:
+                r[condition_type] = disk_file['dataset']\
+                    [data_name]['CONDITION'].attrs[condition_type]
             return r
         elif self.__df_has_condition(disk_file, data_name, condition_type):
-            return disk_file['dataset'][data_name]['CONDITION'].attrs[condition_type]
+            return disk_file['dataset'][data_name]['CONDITION'].\
+                attrs[condition_type]
         else:
             return False
 
@@ -697,8 +683,10 @@ class Dataset(object):
     def __df_del_condition(self, disk_file, data_name, condition_type = None):
         if condition_type is None and self.__df_has_condition(data_name):
             disk_file['dataset'][data_name].pop('CONDITION')
-        elif condition_type is not None and self.__df_has_condition(data_name, condition_type):
-            disk_file['dataset'][data_name]['CONDITION'].attrs.pop(condition_type)
+        elif condition_type is not None and \
+            self.__df_has_condition(data_name, condition_type):
+            disk_file['dataset'][data_name]['CONDITION'].\
+                attrs.pop(condition_type)
 
     ### EPOCH ###
 
@@ -758,7 +746,7 @@ class Dataset(object):
     def __df_del_epoch(self, disk_file, data_name, epoch):
         disk_file['dataset'][data_name]['data'].pop(str(epoch))
 
-    def select_epochs(self, label_name = None, label_value = None, data_name = None):
+    def select_epochs(self, label_name=None, label_value=None, data_name=None):
         # data_name
         if data_name is None:
             data_name = self.get_data()
@@ -768,7 +756,7 @@ class Dataset(object):
         if (label_name is None) and (label_value is None):
             rst = list()
             for d in data_name:
-                if self.__get_state(d) == Dataset.ERROR:
+                if self.__get_state(d) < Dataset.PREPROCESSED:
                     continue
                 logging.info(d)
                 for epoch in self.get_epochs(d):
@@ -816,14 +804,16 @@ class Dataset(object):
                     logging.info(data_name)
                     to_be_del = []
                     for epoch in self.get_epochs(data_name):
-                        if self.__get_label(data_name, epoch, label_name) not in allowed_label:
+                        if self.__get_label(data_name, epoch, label_name) \
+                            not in allowed_label:
                             to_be_del.append(epoch)
                     for e in to_be_del:
                         self.__del_epoch(data_name, e)
 
     def __get_epoch_element_list(self, data_name, epoch):
         if self.disk_mode:
-            return self.__df_get_epoch_element_list(self.disk_file(), data_name, epoch)
+            return self.__df_get_epoch_element_list(self.disk_file(),
+                                                    data_name, epoch)
         else:
             return self.__mm_get_epoch_element_list(data_name, epoch)
         
@@ -832,7 +822,8 @@ class Dataset(object):
 
     def __df_get_epoch_element_list(self, disk_file, data_name, epoch):
         r = list(disk_file['dataset'][data_name]['data'][str(epoch)].keys())
-        r.extend(list(disk_file['dataset'][data_name]['data'][str(epoch)].attrs))
+        r.extend(list(disk_file['dataset'][data_name]\
+                      ['data'][str(epoch)].attrs))
         return r
 
     ### FEATURE & LABEL ###
@@ -860,7 +851,7 @@ class Dataset(object):
             The name for distinguishing different feature matrices. It is 
             necessary in dataset with multiple features. The default is 
             \'FEATURE\'.
-        value : numpy.ndarray or array-like
+        value : np.ndarray or array-like
             The feature matrix.
 
         Returns
@@ -869,7 +860,8 @@ class Dataset(object):
 
         '''
         if self.disk_mode:
-            self.__df_set_feature(self.disk_file(), data_name, epoch, feature_name, value)
+            self.__df_set_feature(self.disk_file(), data_name,
+                                  epoch, feature_name, value)
         else:
             self.__mm_set_feature(data_name, epoch, feature_name, value)
 
@@ -880,13 +872,16 @@ class Dataset(object):
         
         self.dataset[data_name]['data'][epoch][feature_name] = value
 
-    def __df_set_feature(self, disk_file, data_name, epoch, feature_name, value):
+    def __df_set_feature(self, disk_file, data_name,
+                         epoch, feature_name, value):
         if epoch not in self.__df_get_epochs(disk_file, data_name):
             self.__df_init_epoch(disk_file, data_name, epoch)
         if feature_name in disk_file['dataset'][data_name]['data'][str(epoch)]:
-            disk_file['dataset'][data_name]['data'][str(epoch)][feature_name][()] = value
+            disk_file['dataset'][data_name]['data']\
+                [str(epoch)][feature_name][()] = value
         else:
-            disk_file['dataset'][data_name]['data'][str(epoch)].create_dataset(feature_name, data = value)
+            disk_file['dataset'][data_name]['data'][str(epoch)].\
+                create_dataset(feature_name, data = value)
 
     def __get_feature(self, data_name, epoch, feature_name):
         '''
@@ -907,7 +902,7 @@ class Dataset(object):
 
         Returns
         -------
-        numpy.ndarray or array-like
+        np.ndarray or array-like
             The feature matrix.
 
         '''
@@ -922,7 +917,8 @@ class Dataset(object):
 
 
     def __df_get_feature(self, disk_file, data_name, epoch, feature_name):
-        return disk_file['dataset'][data_name]['data'][str(epoch)][feature_name][()]
+        return disk_file['dataset'][data_name]['data']\
+            [str(epoch)][feature_name][()]
 
     def __set_label(self, data_name, epoch, label_name, value):
         '''
@@ -947,7 +943,7 @@ class Dataset(object):
             The name for distinguishing different label matrices. It is 
             necessary in dataset with multiple labels. The default is 
             \'LABEL\'.
-        value : numpy.ndarray or array-like
+        value : np.ndarray or array-like
             The label matrix.
 
         Returns
@@ -956,7 +952,8 @@ class Dataset(object):
 
         '''
         if self.disk_mode:
-            self.__df_set_label(self.disk_file(), data_name, epoch, label_name, value)
+            self.__df_set_label(self.disk_file(), data_name,
+                                epoch, label_name, value)
         else:
             self.__mm_set_label(data_name, epoch, label_name, value)
 
@@ -969,7 +966,8 @@ class Dataset(object):
     def __df_set_label(self, disk_file, data_name, epoch, label_name, value):
         if epoch not in self.__df_get_epochs(disk_file, data_name):
             self.__df_init_epoch(disk_file, data_name, epoch)
-        disk_file['dataset'][data_name]['data'][str(epoch)].attrs[label_name] = value
+        disk_file['dataset'][data_name]['data'][str(epoch)].\
+            attrs[label_name] = value
 
     def __get_label(self, data_name, epoch, label_name):
         '''
@@ -990,12 +988,13 @@ class Dataset(object):
 
         Returns
         -------
-        numpy.ndarray or array-like
+        np.ndarray or array-like
             The label matrix.
 
         '''
         if self.disk_mode:
-            return self.__df_get_label(self.disk_file(), data_name, epoch, label_name)
+            return self.__df_get_label(self.disk_file(), data_name,
+                                       epoch, label_name)
         else:
             return self.__mm_get_label(data_name, epoch, label_name)
 
@@ -1003,7 +1002,8 @@ class Dataset(object):
         return self.dataset[data_name]['data'][epoch][label_name]
 
     def __df_get_label(self, disk_file, data_name, epoch, label_name):
-        return disk_file['dataset'][data_name]['data'][str(epoch)].attrs[label_name]
+        return disk_file['dataset'][data_name]['data'][str(epoch)].\
+            attrs[label_name]
 
     def del_feature(self, feature_name):
         if self.disk_file:
@@ -1024,7 +1024,8 @@ class Dataset(object):
         if len(self.features) > 1:
             for data_name in self.__df_get_data(disk_file):
                 for epoch in self.__df_get_epochs(disk_file, data_name):
-                    disk_file['dataset'][data_name]['data'][epoch].pop(feature_name)
+                    disk_file['dataset'][data_name]['data'][epoch].\
+                        pop(feature_name)
             self.features.remove(feature_name)
         else:
             raise Exception('Cannot delete the only feature.')
@@ -1046,7 +1047,8 @@ class Dataset(object):
     def __df_del_label(self, disk_file, label_name):
         for data_name in self.__df_get_data(disk_file):
             for epoch in self.__df_get_epochs(disk_file, data_name):
-                disk_file['dataset'][data_name]['data'][epoch].attrs.pop(label_name)
+                disk_file['dataset'][data_name]['data'][epoch].attrs.\
+                    pop(label_name)
         self.labels.remove(label_name)
         if len(self.labels) == 0:
             self.has_label = False
@@ -1087,7 +1089,8 @@ class Dataset(object):
         return rst
 
     def stat_plot_bar(stat, show = True, save_path = None):
-        # the input is a dict, whose keys are the `label_name` and values are the count
+        # the input is a dict, whose keys are the `label_name` and
+        # values are the count
         x = list(range(len(stat)))
         tick_label = [k for k in stat.keys()]
         y = [stat[k] for k in stat.keys()]
@@ -1100,7 +1103,8 @@ class Dataset(object):
             plt.savefig(save_path)
 
     def stat_plot_pie(stat, show = True, save_path = None):
-        # the input is a dict, whose keys are the `label_name` and values are the count
+        # the input is a dict, whose keys are the `label_name` and
+        # values are the count
         kinds = [k for k in stat.keys()]
         values = [stat[k] for k in stat.keys()]
         plt.axes(aspect='equal') # ensure the pie is a circle
@@ -1285,17 +1289,22 @@ class Dataset(object):
                 break
             except MemoryError:
                 # handle the OOM problem
-                print('============================================================')
+                print('======================================================'
+                      '======')
                 print('Now we encounter an OUT OF MEMORY error.')
-                print('The memory usage of this dataset is approximately {0:.3f} GB'.format(self.memory_usage()))
-                print('Now we are at Iteration {0} of \'{1}\'.'.format(i, data_name))
+                print('The memory usage of this dataset is approximately'
+                      ' {0:.3f} GB'.format(self.memory_usage()))
+                print('Now we are at Iteration {0} of \'{1}\'.'\
+                      .format(i, data_name))
                 print('You can read the log file for more details.')
                 print('The possible solution:')
-                print('\t- Use a more powerful computer which has larger memory.')
+                print('\t- Use a more powerful computer which has larger '
+                      'memory.')
                 print('\t- Lower your data\'s sampling rate.')
                 print('\t- Use less channels.')
                 print('\t- Add less data sources.')
-                print('============================================================')
+                print('======================================================='
+                      '=====')
                 print('INTERRUPTED')
             except:
                 tb = traceback.format_exc()
@@ -1362,9 +1371,11 @@ class Dataset(object):
                     p = True
             if self.has_label:
                 for l in self.labels:
-                    if l not in self.__get_epoch_element_list(data_name, epoch):
-                        self.exception_logger.submit(data_name, epoch, l, 
-                                                     'Label is not in dataset.')
+                    if l not in self.__get_epoch_element_list(data_name,
+                                                              epoch):
+                        self.exception_logger.\
+                            submit(data_name, epoch, l, 
+                                   'Label is not in dataset.')
                         p = True
             if p:
                 to_be_del.append(epoch)
@@ -1425,7 +1436,41 @@ class Dataset(object):
     ### SAMPLE ###
 
     def stat_classes(self, elements):
-        # TODO : 这里就是根据elements 计算出到底可以有多少种类别。return所有类别的组合，它的len就是种类数目。
+        '''
+        Add up different classes (or class group) according to input elements.
+        Return a dict whose `keys()` are classes and `values()` are epochs for
+        each class.
+
+        >>> # compute the number of classes
+        >>> len(ds.stat_classes(elements).keys())
+
+        >>> # list all the classes
+        >>> list(ds.stat_classes(elements).keys())
+
+        Parameters
+        ----------
+        elements : str or list
+            `element_name` or a list of them. Must be `label_name` or
+            `condition_type`.
+
+        Raises
+        ------
+        TypeError
+            Raised when input unsupported parameters.
+        ValueError
+            Raised when the input element do not exist in the dataset.
+            Or Raised when the input element is not `label_name` or
+            `condition_type`
+
+        Returns
+        -------
+        rst : dict
+            The key is `str` or `tuple`, represents a class or class group.
+            The value is a list of `data_name` or a list of 
+            `(data_name, epoch)` tuples.
+
+        '''
+        
         if isinstance(elements, str):
             elements = [elements]
         elif isinstance(elements, list):
@@ -1458,7 +1503,8 @@ class Dataset(object):
                 c = []
                 for cond in condition:
                     c.append(self.get_condition(d, cond))
-                c = tuple(c) if num > 1 else c[0]  # use tuple or single element
+                c = tuple(c) if num > 1 else c[0]  # use tuple or single
+                                                   # element
                 if c not in rst:
                     rst[c] = []
                 rst[c].append(d)
@@ -1553,52 +1599,156 @@ class Dataset(object):
                             if epoch[t] < epoch[abs(tmin)]: # 前面不足
                                 if padding: # 补零
                                     x_tem[feature].append(
-                                            numpy.array([numpy.zeros(self.shape[feature])] * (abs(tmin) - t) 
+                                            np.array([np.zeros(self.shape[feature])] * (abs(tmin) - t) 
                                             + [self.__get_feature(name, i, feature) for i in epoch[: t + tmax + 1]]
                                             ))
                             elif epoch[t] > epoch[data_length - tmax - 1]: # 后面不足
                                 if padding:
                                     x_tem[feature].append(
-                                            numpy.array([self.__get_feature(name, i, feature) for i in epoch[t - abs(tmin) :]]
-                                            + [numpy.zeros(self.shape[feature])] * (tmax + t + 1 - data_length)
+                                            np.array([self.__get_feature(name, i, feature) for i in epoch[t - abs(tmin) :]]
+                                            + [np.zeros(self.shape[feature])] * (tmax + t + 1 - data_length)
                                             ))
                             else: # 正常情况
-                                x_tem[feature].append(numpy.array([self.__get_feature(name, i, feature) 
+                                x_tem[feature].append(np.array([self.__get_feature(name, i, feature) 
                                     for i in epoch[t - abs(tmin) : t + tmax + 1]]))
         # 添加形状
         for k in x_tem.keys():
-            x_tem[k] = numpy.array(x_tem[k])
+            x_tem[k] = np.array(x_tem[k])
         if len(feature_name) == 1:
             x_tem = x_tem[list(x_tem.keys())[0]]
         return x_tem
 
-    def sample_epoched_x(self, data_name, epoch, feature_name, tmin=0,
+    def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
                                tmax=0, padding=False, array_type=int):
-        
+        '''当返回None时，跳过这个epoch'''
+        # check state
+        if self.__get_state(data_name) < Dataset.PREPROCESSED:
+            raise DataStateError('You cannot sample from a data not correctly '
+                                 'preprocessed. The target data `' + data_name
+                                 + '` has a state `' 
+                                 + self.__get_state(data_name, True) + '`.')
+        # without timestep
         if tmin == 0 and tmax == 0:
-            if self.elements[feature_name] == 'feature':
-                return self.__get_feature(data_name, epoch, feature_name)
-            elif self.elements[feature_name] == 'label':
-                return self.__get_label(data_name, epoch, feature_name)
+            # feature
+            if self.elements[element_name] == 'feature':
+                return self.__get_feature(data_name, epoch, element_name)
+            # label
+            elif self.elements[element_name] == 'label':
+                return self.__get_label(data_name, epoch, element_name)
+        # with timestep
         else:
+            # check timespan
+            # timespan cannot be longer than data_length
             data_length = len(self.get_epochs(data_name))
             logging.info('Data Length: ' + str(data_length))
             assert tmax >= 0
-            assert abs(tmin) + tmax <= data_length # 不能padding的长度远大于数据长度
-
+            assert abs(tmin) + tmax <= data_length
+            # sample
             epoch_list = self.get_epochs(data_name)
-            if epoch_list[epoch] < epoch_list[abs(tmin)]: # 前面不足
-                if padding: # 补零
-                    r = numpy.array([numpy.zeros(self.shape[feature_name])] * (abs(tmin) - epoch) 
-                        + [self.__get_feature(name, i, feature_name) for i in epoch_list[: epoch + tmax + 1]])
-            elif epoch_list[epoch] > epoch_list[data_length - tmax - 1]: # 后面不足
-                if padding:
-                    r = numpy.array([self.__get_feature(name, i, feature) for i in epoch_list[epoch - abs(tmin) :]]
-                        + [numpy.zeros(self.shape[feature])] * (tmax + epoch + 1 - data_length))
-            else: # 正常情况
-                r = numpy.array([self.__get_feature(name, i, feature) 
-                    for i in epoch_list[epoch - abs(tmin) : epoch + tmax + 1]])
+            # at the start of the series
+            if epoch_list[epoch] < epoch_list[abs(tmin)]:
+                if padding:  # pre-padding
+                    # feature
+                    if self.elements[element_name] == 'feature':
+                        r = np.array([np.zeros(self.shape[element_name])] \
+                                     * (abs(tmin) - epoch) 
+                            + [self.__get_feature(data_name, i, element_name) \
+                               for i in epoch_list[: epoch + tmax + 1]])
+                    # label
+                    elif self.elements[element_name] == 'label':
+                        p = self.label_dict[element_name].get_array( \
+                                                None, array_type = array_type)
+                        r = np.array([p] * (abs(tmin) - epoch) 
+                            + [self.label_dict[element_name].get_array( \
+                            self.__get_label(data_name,
+                                             epoch[i], element_name), \
+                                array_type = array_type) \
+                               for i in epoch_list[: epoch + tmax + 1]])
+                # if not padding, the epoch at edge will be disposed
+                else:
+                    raise BrokenTimestepError()
+            # at the end of the series
+            elif epoch_list[epoch] > epoch_list[data_length - tmax - 1]:
+                if padding:  # post-padding
+                    # feature
+                    if self.elements[element_name] == 'feature':
+                        r = np.array([self.__get_feature(data_name,
+                                                         i, element_name) \
+                                      for i in epoch_list[epoch - abs(tmin) :]]
+                        + [np.zeros(self.shape[element_name])] \
+                            * (tmax + epoch + 1 - data_length))
+                    # label
+                    elif self.elements[element_name] == 'label':
+                        p = self.label_dict[element_name].get_array( \
+                                                None, array_type = array_type)
+                        r = np.array([self.label_dict[element_name].get_array(
+                                        self.__get_label(data_name,
+                                                         i, element_name), \
+                                            array_type = array_type) \
+                                      for i in epoch_list[epoch - abs(tmin) :]]
+                        + [p] * (tmax + epoch + 1 - data_length))
+            else: # normal situation
+                # feature
+                if self.elements[element_name] == 'feature':
+                    r = np.array([self.__get_feature(data_name, i,
+                                                     element_name) 
+                                  for i in epoch_list[epoch - abs(tmin) : \
+                                                      epoch + tmax + 1]])
+                # label
+                elif self.elements[element_name] == 'label':
+                    r = np.array([self.label_dict[element_name].get_array( \
+                            self.__get_label(data_name, epoch[i], element_name),
+                            array_type = array_type)
+                            for i in epoch_list[epoch - abs(tmin) : \
+                                                      epoch + tmax + 1]])
             return r
+
+    def sample_epoched_y(self, data_name, epoch, element_name, array_type=int):
+        # check state
+        if self.__get_state(data_name) < Dataset.PREPROCESSED:
+            raise DataStateError('You cannot sample from a data not correctly '
+                                 'preprocessed. The target data `' + data_name
+                                 + '` has a state `' 
+                                 + self.__get_state(data_name, True) + '`.')
+        # label
+        if self.elements[element_name] == 'label':
+            return self.__get_label(data_name, epoch, element_name)
+        elif self.elements[element_name] == 'condition':
+            return self.get_condition(data_name, condition_type=element_name)
+        else:
+            raise ValueError('The input element ' + element_name + 'is a `'
+                             + self.elements[element_name] + '`. It cannot'
+                             'act as `epoched_y` sample.')
+    
+    def sample_serial_x(self, data_name, element_name, tmin, tmax,
+                        data_padding, max_len, epoch_padding):
+        rst = []
+        for epoch in self.get_epochs(data_name):
+            try:
+                rst.append(self.sample_epoched_x(data_name, epoch, 
+                                                 element_name,
+                                                 tmin, tmax, epoch_padding))
+            except BrokenTimestepError:
+                continue
+        if data_padding:
+            if max_len is None:
+                raise ValueError('A certain `max_len` is needed for '
+                                 'data_padding')
+            if self.elements[element_name] == 'feature':
+                sample_shape = self.shape[element_name]
+                dtype = 'float32'
+            else:
+                sample_shape = self.label_dict[element_name].shape()
+                dtype = 'int32'
+            x = np.full((max_len, ) + sample_shape, -1, dtype=dtype)
+            trunc = rst[-max_len:]
+            # check `trunc` has expected shape
+            trunc = np.asarray(trunc, dtype=dtype)
+            if trunc.shape[1:] != sample_shape:
+                raise ValueError('Shape of sample %s of sequence '
+                                 'is different from expected shape %s' %
+                                 (trunc.shape[1:], sample_shape))
+            x[-len(trunc):] = trunc
 
     def y(self, data_name = None, label_name = None, tmin = 0, tmax = 0, padding = False, array_type = int):
         # array_type为None时，则返回一个int
@@ -1643,7 +1793,7 @@ class Dataset(object):
                                 y_tem[label].append(self.label_dict[label].get_array(self.__get_label(name, epoch[t], label), array_type = array_type))
         # 添加形状
         for k in y_tem.keys():
-            y_tem[k] = numpy.array(y_tem[k])
+            y_tem[k] = np.array(y_tem[k])
         if len(label_name) == 1:
             y_tem = y_tem[list(y_tem.keys())[0]]
         return y_tem
