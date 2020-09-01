@@ -102,10 +102,9 @@ class Procedure(object):
         if not isinstance(method, str) or not isinstance(chan_list, list) \
             or not isinstance(param_list, list) and param_list is not None:
             raise TypeError()
-        else:
-            self.__proce.append([method, chan_list, param_list])
-            for channel in chan_list:
-                self.channel_list.add(channel)
+        self.__proce.append([method, chan_list, param_list])
+        for channel in chan_list:
+            self.channel_list.add(channel)
     
     def clear(self):
         # 2020-2-19 重新初始化
@@ -235,7 +234,7 @@ class LabelDict(object):
         else:
             if isinstance(label, Iterable) and len(label) == 0:
                 raise TypeError('at least 1 label should be given.')
-            elif label is None:  # request padding
+            if label is None:  # request padding
                 arr = np.array([False] * self.length)
                 return arr.astype(array_type)
             else:
@@ -1533,6 +1532,8 @@ class Dataset(object):
                                                epoch_padding))
         if len(x_samp) == 1:
             x_samp = x_samp[0]
+        else:
+            x_samp = np.asarray(x_samp)
         if y is None:
             return x_samp
         else:
@@ -1541,6 +1542,8 @@ class Dataset(object):
                 y_samp.append(self.get_condition(data_name, i))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
+            else:
+                y_samp = np.asarray(y_samp)
             return (x_samp, y_samp)
 
     def sample_epoch(self, data_name, epoch, lst, tmin=0, tmax=0,
@@ -1552,6 +1555,8 @@ class Dataset(object):
                                                 tmin, tmax, epoch_padding))
         if len(x_samp) == 1:
             x_samp = x_samp[0]
+        else:
+            x_samp = np.asarray(x_samp)
         if y is None:
             return x_samp
         else:
@@ -1560,8 +1565,11 @@ class Dataset(object):
                 y_samp.append(self.sample_epoched_y(data_name, epoch, i))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
+            else:
+                y_samp = np.asarray(y_samp)
             return (x_samp, y_samp)
 
+    """
     def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
                                tmax=0, padding=False, array_type=int):
         '''当返回None时，跳过这个epoch'''
@@ -1646,6 +1654,69 @@ class Dataset(object):
                             for i in epoch_list[epoch - abs(tmin) : \
                                                       epoch + tmax + 1]])
             return r
+    """
+
+    def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
+                               tmax=0, padding=False, array_type=int):
+        '''当返回None时，跳过这个epoch'''
+        # check state
+        if self.__get_state(data_name) < Dataset.PREPROCESSED:
+            raise DataStateError('You cannot sample from a data not correctly '
+                                 'preprocessed. The target data `' + data_name
+                                 + '` has a state `' 
+                                 + self.__get_state(data_name, True) + '`.')
+        # without timestep
+        if tmin == 0 and tmax == 0:
+            # feature
+            if self.elements[element_name] == 'feature':
+                return self.__get_feature(data_name, epoch, element_name)
+            # label
+            elif self.elements[element_name] == 'label':
+                return self.__get_label(data_name, epoch, element_name)
+        # with timestep
+        else:
+            # check timespan
+            # timespan cannot be longer than data_length
+            data_length = len(self.get_epochs(data_name))
+            logging.info('Data Length: ' + str(data_length))
+            assert tmax >= 0
+            timespan = abs(tmin) + tmax + 1
+            assert timespan <= data_length
+            # sample
+            epoch_list = self.get_epochs(data_name)
+            idx = epoch_list.index(epoch)
+            # feature
+            if self.elements[element_name] == 'feature':
+                dtype = 'float32'
+                sample_shape = self.shape[element_name]
+                r = np.array([self.__get_feature(data_name, i, element_name) 
+                              for i in epoch_list[idx-abs(tmin) : idx+tmax+1]])
+            # label
+            elif self.elements[element_name] == 'label':
+                dtype = 'int32'
+                sample_shape = self.label_dict[element_name].shape()
+                r = np.array([self.label_dict[element_name].get_array( \
+                        self.__get_label(data_name, i, element_name),
+                        array_type = array_type)
+                        for i in epoch_list[idx - abs(tmin) : idx + tmax + 1]])
+            if len(r) < timespan:
+                if not padding:
+                    raise BrokenTimestepError()
+                else:
+                    x = np.full((timespan, ) + sample_shape, 0, dtype=dtype)
+                    trunc = r[-timespan:]
+                    # check `trunc` has expected shape
+                    trunc = np.asarray(trunc, dtype=dtype)
+                    if trunc.shape[1:] != sample_shape:
+                        raise ValueError('Shape of sample %s of sequence is '
+                                         'different from expected shape %s' %
+                                         (trunc.shape[1:], sample_shape))
+                    if idx - abs(tmin) >= 0:
+                        x[idx, :len(trunc)] = trunc
+                    elif idx - abs(tmin) < 0:
+                        x[idx, -len(trunc):] = trunc
+                    r = x
+            return r
 
     def sample_epoched_y(self, data_name, epoch, element_name, array_type=int):
         # check state
@@ -1693,6 +1764,10 @@ class Dataset(object):
                                  'is different from expected shape %s' %
                                  (trunc.shape[1:], sample_shape))
             x[-len(trunc):] = trunc
+            rst = x
+        else:
+            rst = np.asarray()
+        return rst
 
     def memory_usage(self, unit = 'GB'):
         if self.disk_mode:
