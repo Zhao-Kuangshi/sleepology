@@ -235,10 +235,10 @@ class LabelDict(object):
             if isinstance(label, Iterable) and len(label) == 0:
                 raise TypeError('at least 1 label should be given.')
             if label is None:  # request padding
-                arr = np.array([False] * self.length)
+                arr = np.asarray([False] * self.length)
                 return arr.astype(array_type)
             else:
-                arr = np.array([False] * self.length)
+                arr = np.asarray([False] * self.length)
                 for l in label:
                     arr[self.label2array[l]] = True
                 return arr.astype(array_type)
@@ -770,7 +770,7 @@ class Dataset(object):
                 logging.info(d)
                 for epoch in self.get_epochs(d):
                     for l in label_value:
-                        if self.__get_label(d, epoch, label_name) == l:
+                        if self.get_label(d, epoch, label_name) == l:
                             rst.append((d, epoch))
         else:
             raise TypeError('You should input all of or none of\n' + 
@@ -789,7 +789,7 @@ class Dataset(object):
                     logging.info(data_name)
                     to_be_del = []
                     for epoch in self.get_epochs(data_name):
-                        if self.__get_label(data_name, epoch, label_name) == l:
+                        if self.get_label(data_name, epoch, label_name) == l:
                             to_be_del.append(epoch)
                     for e in to_be_del:
                         self.__del_epoch(data_name, e)
@@ -803,7 +803,7 @@ class Dataset(object):
                     logging.info(data_name)
                     to_be_del = []
                     for epoch in self.get_epochs(data_name):
-                        if self.__get_label(data_name, epoch, label_name) \
+                        if self.get_label(data_name, epoch, label_name) \
                             not in allowed_label:
                             to_be_del.append(epoch)
                     for e in to_be_del:
@@ -882,7 +882,7 @@ class Dataset(object):
             disk_file['dataset'][data_name]['data'][str(epoch)].\
                 create_dataset(feature_name, data = value)
 
-    def __get_feature(self, data_name, epoch, feature_name):
+    def get_feature(self, data_name, epoch, feature_name):
         '''
         A private matrix for getting feature matrix of particular data, epoch 
         and feature_name.
@@ -912,12 +912,13 @@ class Dataset(object):
             return self.__mm_get_feature(data_name, epoch, feature_name)
 
     def __mm_get_feature(self, data_name, epoch, feature_name):
-        return self.dataset[data_name]['data'][epoch][feature_name]
+        return np.squeeze(self.dataset[data_name]['data'][epoch][feature_name])
 
 
     def __df_get_feature(self, disk_file, data_name, epoch, feature_name):
-        return disk_file['dataset'][data_name]['data']\
+        rst =  disk_file['dataset'][data_name]['data']\
             [str(epoch)][feature_name][()]
+        return np.squeeze(rst)
 
     def __set_label(self, data_name, epoch, label_name, value):
         '''
@@ -968,7 +969,7 @@ class Dataset(object):
         disk_file['dataset'][data_name]['data'][str(epoch)].\
             attrs[label_name] = value
 
-    def __get_label(self, data_name, epoch, label_name):
+    def get_label(self, data_name, epoch, label_name):
         '''
         A private matrix for getting label matrix of particular data, epoch 
         and label_name.
@@ -1082,7 +1083,7 @@ class Dataset(object):
             if self.__get_state(dn) != Dataset.ERROR:
                 logging.info(dn)
                 for epoch in self.get_epochs(dn):
-                    l = self.__get_label(dn, epoch, label_name)
+                    l = self.get_label(dn, epoch, label_name)
                     if l in label:
                         rst[l] += 1
         return rst
@@ -1405,11 +1406,11 @@ class Dataset(object):
                     # features
                     for f in self.features:
                         if f not in self.shape.keys():
-                            self.shape[f] = self.__get_feature(data_name, 
+                            self.shape[f] = self.get_feature(data_name, 
                                                           epoch, f).shape
                         else:
                             tb = 'Shape is inconsistent.'
-                            if self.shape[f] != self.__get_feature(data_name, 
+                            if self.shape[f] != self.get_feature(data_name, 
                                                           epoch, f).shape:
                                 self.exception_logger.submit(data_name, epoch,
                                                              f, tb)
@@ -1514,7 +1515,7 @@ class Dataset(object):
                     for cond in condition:
                         c.append(self.get_condition(d, cond))
                     for l in label:
-                        c.append(self.__get_label(d, e, l))
+                        c.append(self.get_label(d, e, l))
                     c = tuple(c) if num > 1 else c[0]  # use tuple or single 
                                                        # element
                     if c not in rst:
@@ -1526,6 +1527,8 @@ class Dataset(object):
                     max_len=None, epoch_padding=False):
         x, y = lst
         x_samp = []
+        if isinstance(x, str):
+            x = [x]
         for i in x:
             x_samp.append(self.sample_serial_x(data_name, i, tmin, tmax,
                                                data_padding, max_len,
@@ -1538,8 +1541,12 @@ class Dataset(object):
             return x_samp
         else:
             y_samp = []
+            if isinstance(y, str):
+                y = [y]
             for i in y:
-                y_samp.append(self.get_condition(data_name, i))
+                y_samp.append(
+                    self.label_dict[i].get_array( \
+                        self.get_condition(data_name, i)))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
             else:
@@ -1550,6 +1557,8 @@ class Dataset(object):
                     epoch_padding=False):
         x, y = lst
         x_samp = []
+        if isinstance(x, str):
+            x = [x]
         for i in x:
             x_samp.append(self.sample_epoched_x(data_name, epoch, i,
                                                 tmin, tmax, epoch_padding))
@@ -1561,6 +1570,8 @@ class Dataset(object):
             return x_samp
         else:
             y_samp = []
+            if isinstance(y, str):
+                y = [y]
             for i in y:
                 y_samp.append(self.sample_epoched_y(data_name, epoch, i))
             if len(y_samp) == 1:
@@ -1583,10 +1594,10 @@ class Dataset(object):
         if tmin == 0 and tmax == 0:
             # feature
             if self.elements[element_name] == 'feature':
-                return self.__get_feature(data_name, epoch, element_name)
+                return self.get_feature(data_name, epoch, element_name)
             # label
             elif self.elements[element_name] == 'label':
-                return self.__get_label(data_name, epoch, element_name)
+                return self.get_label(data_name, epoch, element_name)
         # with timestep
         else:
             # check timespan
@@ -1604,7 +1615,7 @@ class Dataset(object):
                     if self.elements[element_name] == 'feature':
                         r = np.array([np.zeros(self.shape[element_name])] \
                                      * (abs(tmin) - epoch) 
-                            + [self.__get_feature(data_name, i, element_name) \
+                            + [self.get_feature(data_name, i, element_name) \
                                for i in epoch_list[: epoch + tmax + 1]])
                     # label
                     elif self.elements[element_name] == 'label':
@@ -1612,7 +1623,7 @@ class Dataset(object):
                                                 None, array_type = array_type)
                         r = np.array([p] * (abs(tmin) - epoch) 
                             + [self.label_dict[element_name].get_array( \
-                            self.__get_label(data_name,
+                            self.get_label(data_name,
                                              epoch[i], element_name), \
                                 array_type = array_type) \
                                for i in epoch_list[: epoch + tmax + 1]])
@@ -1624,7 +1635,7 @@ class Dataset(object):
                 if padding:  # post-padding
                     # feature
                     if self.elements[element_name] == 'feature':
-                        r = np.array([self.__get_feature(data_name,
+                        r = np.array([self.get_feature(data_name,
                                                          i, element_name) \
                                       for i in epoch_list[epoch - abs(tmin) :]]
                         + [np.zeros(self.shape[element_name])] \
@@ -1634,7 +1645,7 @@ class Dataset(object):
                         p = self.label_dict[element_name].get_array( \
                                                 None, array_type = array_type)
                         r = np.array([self.label_dict[element_name].get_array(
-                                        self.__get_label(data_name,
+                                        self.get_label(data_name,
                                                          i, element_name), \
                                             array_type = array_type) \
                                       for i in epoch_list[epoch - abs(tmin) :]]
@@ -1642,14 +1653,14 @@ class Dataset(object):
             else: # normal situation
                 # feature
                 if self.elements[element_name] == 'feature':
-                    r = np.array([self.__get_feature(data_name, i,
+                    r = np.array([self.get_feature(data_name, i,
                                                      element_name) 
                                   for i in epoch_list[epoch - abs(tmin) : \
                                                       epoch + tmax + 1]])
                 # label
                 elif self.elements[element_name] == 'label':
                     r = np.array([self.label_dict[element_name].get_array( \
-                            self.__get_label(data_name, epoch[i], element_name),
+                            self.get_label(data_name, epoch[i], element_name),
                             array_type = array_type)
                             for i in epoch_list[epoch - abs(tmin) : \
                                                       epoch + tmax + 1]])
@@ -1669,10 +1680,10 @@ class Dataset(object):
         if tmin == 0 and tmax == 0:
             # feature
             if self.elements[element_name] == 'feature':
-                return self.__get_feature(data_name, epoch, element_name)
+                return self.get_feature(data_name, epoch, element_name)
             # label
             elif self.elements[element_name] == 'label':
-                return self.__get_label(data_name, epoch, element_name)
+                return self.get_label(data_name, epoch, element_name)
         # with timestep
         else:
             # check timespan
@@ -1689,14 +1700,14 @@ class Dataset(object):
             if self.elements[element_name] == 'feature':
                 dtype = 'float32'
                 sample_shape = self.shape[element_name]
-                r = np.array([self.__get_feature(data_name, i, element_name) 
+                r = np.asarray([self.get_feature(data_name, i, element_name) 
                               for i in epoch_list[idx-abs(tmin) : idx+tmax+1]])
             # label
             elif self.elements[element_name] == 'label':
                 dtype = 'int32'
                 sample_shape = self.label_dict[element_name].shape()
-                r = np.array([self.label_dict[element_name].get_array( \
-                        self.__get_label(data_name, i, element_name),
+                r = np.asarray([self.label_dict[element_name].get_array( \
+                        self.get_label(data_name, i, element_name),
                         array_type = array_type)
                         for i in epoch_list[idx - abs(tmin) : idx + tmax + 1]])
             if len(r) < timespan:
@@ -1716,6 +1727,7 @@ class Dataset(object):
                     elif idx - abs(tmin) < 0:
                         x[idx, -len(trunc):] = trunc
                     r = x
+            logging.debug(r.shape)
             return r
 
     def sample_epoched_y(self, data_name, epoch, element_name, array_type=int):
@@ -1727,9 +1739,14 @@ class Dataset(object):
                                  + self.__get_state(data_name, True) + '`.')
         # label
         if self.elements[element_name] == 'label':
-            return self.__get_label(data_name, epoch, element_name)
+            return self.label_dict[element_name].get_array( \
+                        self.get_label(data_name, epoch, element_name),
+                        array_type = array_type)
         elif self.elements[element_name] == 'condition':
-            return self.get_condition(data_name, condition_type=element_name)
+            return self.label_dict[element_name].get_array( \
+                        self.get_condition(data_name, 
+                                           condition_type=element_name),
+                        array_type = array_type)
         else:
             raise ValueError('The input element ' + element_name + 'is a `'
                              + self.elements[element_name] + '`. It cannot'
@@ -1830,12 +1847,12 @@ class Dataset(object):
             self.__df_init_epoch(disk_file, data_name, epoch)
             for feature in self.features:
                 self.__df_set_feature(disk_file, data_name, epoch, feature, 
-                                      self.__get_feature(data_name, epoch, feature))
+                                      self.get_feature(data_name, epoch, feature))
             # 保存标签 2020-3-5
             if self.has_label:
                 for label in self.labels:
                     self.__df_set_label(disk_file, data_name, epoch, label, 
-                               self.__get_label(data_name, epoch, label))
+                               self.get_label(data_name, epoch, label))
 
     def df_load_label_dict_0_2(self, disk_file):
         # 获取标签字典
