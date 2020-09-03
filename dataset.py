@@ -1676,6 +1676,8 @@ class Dataset(object):
                                  'preprocessed. The target data `' + data_name
                                  + '` has a state `' 
                                  + self.__get_state(data_name, True) + '`.')
+        logging.debug('Data_name: ' + data_name)
+        logging.debug('Epoch: ' + str(epoch))
         # without timestep
         if tmin == 0 and tmax == 0:
             # feature
@@ -1689,19 +1691,23 @@ class Dataset(object):
             # check timespan
             # timespan cannot be longer than data_length
             data_length = len(self.get_epochs(data_name))
-            logging.info('Data Length: ' + str(data_length))
+            logging.debug('Data Length: ' + str(data_length))
             assert tmax >= 0
             timespan = abs(tmin) + tmax + 1
             assert timespan <= data_length
             # sample
             epoch_list = self.get_epochs(data_name)
             idx = epoch_list.index(epoch)
+            # if `idx - abs(tmin) < 0`, it will cause problem in slicing
+            # so check if `idx - abs(tmin) < 0`
+            lower = idx - abs(tmin) if idx - abs(tmin) >= 0 else 0
+            upper = idx + tmax + 1
             # feature
             if self.elements[element_name] == 'feature':
                 dtype = 'float32'
                 sample_shape = self.shape[element_name]
                 r = np.asarray([self.get_feature(data_name, i, element_name) 
-                              for i in epoch_list[idx-abs(tmin) : idx+tmax+1]])
+                              for i in epoch_list[lower : upper]])
             # label
             elif self.elements[element_name] == 'label':
                 dtype = 'int32'
@@ -1709,7 +1715,7 @@ class Dataset(object):
                 r = np.asarray([self.label_dict[element_name].get_array( \
                         self.get_label(data_name, i, element_name),
                         array_type = array_type)
-                        for i in epoch_list[idx - abs(tmin) : idx + tmax + 1]])
+                        for i in epoch_list[lower : upper]])
             if len(r) < timespan:
                 if not padding:
                     raise BrokenTimestepError()
@@ -1723,9 +1729,9 @@ class Dataset(object):
                                          'different from expected shape %s' %
                                          (trunc.shape[1:], sample_shape))
                     if idx - abs(tmin) >= 0:
-                        x[idx, :len(trunc)] = trunc
+                        x[:len(trunc)] = trunc
                     elif idx - abs(tmin) < 0:
-                        x[idx, -len(trunc):] = trunc
+                        x[-len(trunc):] = trunc
                     r = x
             logging.debug(r.shape)
             return r
