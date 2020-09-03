@@ -387,7 +387,6 @@ class Sample(object):
             test = [self.classes[c][i] for i in test]
             train_set.append(train)
             test_set.append(test)
-            debug_classes += 1
             debug_train_set_len += len(train)
             debug_test_set_len += len(test)
         ## train_set is a 2-D list. The first dimension is `class`. The second
