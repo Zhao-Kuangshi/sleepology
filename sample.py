@@ -324,7 +324,7 @@ class Sample(object):
         self.summary()
 
         # lock the config
-        self.editable = False
+        self.__editable = False
 
     def data_list(self):
         '''
