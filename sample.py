@@ -4,12 +4,15 @@ Created on Wed Aug 26 20:07:43 2020
 
 @author: 赵匡是
 """
-from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError
+from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
+    KFoldError
 
 import json
+import random
 import logging
 import numpy as np
 import tableprint as tp
+from random import shuffle as sfl
 from sklearn.model_selection import ShuffleSplit
 
 def flatten(seq):
@@ -242,6 +245,40 @@ class Sample(object):
                                 '`Sample.test_set()` to sample them '
                                 'respectively.')
 
+    def __check_preparation(self):
+        # 检查subgroup和split有没有做
+        if not self.__preparation:
+            self.subgroups()
+            self.shuffle_split()
+
+    def __check_iteration(self):
+        '''
+        In `train` mode, before use `Sample.train_set()` or `Sample.test_set()`
+        , one should first get one fold (or a subset for crossvalidation).
+        Unless the cross validation is not needed (when `n_splits == 1`).
+        
+        If `n_splits != 1`, you should use `Sample.next_fold()` every iteration
+        to initialize train_set and test_set.
+
+        Raises
+        -------
+        KFoldError
+            Raised when `Sample.next_fold()` does not be used properly.
+
+        '''
+        # look up if all the thing needed exist
+        # that is, `self.train` & `self.test`
+        if not hasattr(self, 'train') or not hasattr(self, 'test') and \
+            self.n_splits > 1:
+            raise KFoldError('you\'ve set `n_splits = {0}`, so you have {0}'
+                             ' slices of `train_set` and `test_set`. You must '
+                             'set an iteration by using `Sample.next_fold()`'
+                             ' to initialize the train_set and test_set for '
+                             'this slice.'.format(self.get_n_splits()))
+        if not hasattr(self, 'train') or not hasattr(self, 'test') and \
+            self.n_splits == 1:
+            self.next_fold()
+
     def check_dataset(self, dataset):
         # check `x`
         if self.get_x() is None:
@@ -290,6 +327,7 @@ class Sample(object):
         # and in prediction mode, `y` will not be used
 
     def from_dataset(self, dataset, data_selection = None, mode = 'train'):
+        # TODO: 原子化
         # set mode
         if mode.lower() == 'train':
             self.mode = 'train'
@@ -325,6 +363,8 @@ class Sample(object):
 
         # lock the config
         self.__editable = False
+        # init preparation
+        self.__preparation = False
 
     def data_list(self):
         '''
@@ -349,6 +389,7 @@ class Sample(object):
         Split data or epochs by classes into subgroups.
         Generate `Sample.classes`, which is a `dict` of different classes.
         '''
+        logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
         classes = self.dataset.stat_classes(self.get_y())
         self.classes = {}
         for c in classes:
@@ -356,6 +397,7 @@ class Sample(object):
                                if i in self.data_selection]  # intersection of
                                                              # data_selection
                                                              # and classes
+        logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
 
     def shuffle_split(self):
         '''
@@ -366,14 +408,22 @@ class Sample(object):
         `Sample.get_test_size()` of the data will act as test set.
 
         '''
+        logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
+        logging.info('n_splits = {0}'.format(self.get_n_splits()))
+        logging.info('test_size = {0}'.format(self.get_test_size()))
         ss = ShuffleSplit(n_splits=self.get_n_splits(),
                           test_size=self.get_test_size())
+        self.__current_fold = iter(range(1, self.get_n_splits() + 1))
         self.__k_fold = {}
         for c in self.classes:
             self.__k_fold[c] = ss.split(self.classes[c])
+        logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
 
-    def next_fold(self):
+    def next_fold(self, shuffle=True):
+        self.__check_preparation()
         # start a new iteration
+        current_fold = self.__current_fold
+        logging.info('== GET FOLD {0} =='.format(current_fold))
         train_set = []
         test_set = []
         debug_classes = 0
@@ -391,27 +441,28 @@ class Sample(object):
             debug_test_set_len += len(test)
         ## train_set is a 2-D list. The first dimension is `class`. The second
         ## dimension is `data` or `(data, epoch)` tuple.
-        logging.debug('Dataset has ' + str(debug_classes) + ' classes')
-        logging.debug('Current train_set length ' + str(debug_train_set_len))
-        logging.debug('Current test_set length ' + str(debug_test_set_len))
+        logging.info('Dataset has ' + str(debug_classes) + ' classes')
+        logging.info('Current train_set length ' + str(debug_train_set_len))
+        logging.info('Current test_set length ' + str(debug_test_set_len))
         if self.get_class_balance() and not self.get_data_balance():
             logging.info('Balancing classes ...')
             # find the max_len of different classes. Then oversample other
             # class to the max_len
             train_len = max(len(i) for i in train_set)
-            logging.debug('The max_len of train_set is ' + str(train_len))
+            logging.info('The max_len of train_set is ' + str(train_len))
             test_len = max(len(i) for i in test_set)
-            logging.debug('The max_len of test_set is ' + str(test_len))
+            logging.info('The max_len of test_set is ' + str(test_len))
             # balance every class
             for pcs in range(len(train_set)):  # each piece is a class
                 idx = np.random.choice(range(len(train_set[pcs])), train_len)
                 train_set[pcs] = [train_set[pcs][i] for i in idx]
-                logging.debug('sample train_set to '
-                              + str(len(train_set[pcs])))
+                logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
+                    str(len(train_set[pcs]))))
             for pcs in range(len(test_set)):  # each piece is a class
                 idx = np.random.choice(range(len(test_set[pcs])), test_len)
                 test_set[pcs] = [test_set[pcs][i] for i in idx]
-                logging.debug('sample test_set to ' + str(len(test_set[pcs])))
+                logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
+                    str(len(test_set[pcs]))))
             train_set = flatten(train_set)
             test_set = flatten(test_set)
         elif self.get_data_balance() and not self.get_class_balance():
@@ -419,9 +470,9 @@ class Sample(object):
             # this condition assert self.unit == 'epoch'
             # don't care about classes. Concatenate classes
             train_set = flatten(train_set)
-            logging.debug('Flatten train_set, length: ' + len(train_set))
+            logging.info('Flatten train_set, length: ' + len(train_set))
             test_set = flatten(test_set)
-            logging.debug('Flatten test_set, length: ' + len(test_set))
+            logging.info('Flatten test_set, length: ' + len(test_set))
             # and discriminate train_set and test_set by `data_name`
             train_set = list(self.__discriminate_data(train_set).values())
             test_set = list(self.__discriminate_data(test_set).values())
@@ -430,19 +481,20 @@ class Sample(object):
             # find the max_len of different data. Then oversample other data
             # to the max_len
             train_len = max(len(i) for i in train_set)
-            logging.debug('The max_len of train_set is ' + str(train_len))
+            logging.info('The max_len of train_set is ' + str(train_len))
             test_len = max(len(i) for i in test_set)
-            logging.debug('The max_len of test_set is ' + str(test_len))
+            logging.info('The max_len of test_set is ' + str(test_len))
             # balance every data
             for pcs in range(len(train_set)):  # each piece is a datum
                 idx = np.random.choice(range(len(train_set[pcs])), train_len)
                 train_set[pcs] = [train_set[pcs][i] for i in idx]
-                logging.debug('sample train_set to '
-                              + str(len(train_set[pcs])))
+                logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
+                    str(len(train_set[pcs]))))
             for pcs in range(len(test_set)):  # each piece is a datum
                 idx = np.random.choice(range(len(test_set[pcs])), test_len)
                 test_set[pcs] = [test_set[pcs][i] for i in idx]
-                logging.debug('sample test_set to ' + str(len(test_set[pcs])))
+                logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
+                    str(len(test_set[pcs]))))
             train_set = flatten(train_set)
             test_set = flatten(test_set)
         elif self.get_class_balance() and self.get_data_balance():
@@ -467,26 +519,38 @@ class Sample(object):
             ## `(data, class)` in the second dimension.
             # compute max_len of train_set and test_set
             train_len = max(len(i) for i in train_set)
-            logging.debug('The max_len of train_set is ' + str(train_len))
+            logging.info('The max_len of train_set is ' + str(train_len))
             test_len = max(len(i) for i in test_set)
-            logging.debug('The max_len of test_set is ' + str(test_len))
+            logging.info('The max_len of test_set is ' + str(test_len))
             # balance every (data, class)
             for pcs in range(len(train_set)):
                 idx = np.random.choice(range(len(train_set[pcs])), train_len)
                 train_set[pcs] = [train_set[pcs][i] for i in idx]
-                logging.debug('sample train_set to '
-                              + str(len(train_set[pcs])))
+                logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
+                    str(len(train_set[pcs]))))
             for pcs in range(len(test_set)):
                 idx = np.random.choice(range(len(test_set[pcs])), test_len)
                 test_set[pcs] = [test_set[pcs][i] for i in idx]
-                logging.debug('sample test_set to ' + str(len(test_set[pcs])))
+                logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
+                    str(len(test_set[pcs]))))
             train_set = flatten(train_set)
             test_set = flatten(test_set)
         else:
             train_set = flatten(train_set)
             test_set = flatten(test_set)
+        # finally
+        if shuffle:
+            logging.info('shuffle...')
+            sfl(train_set)
+            sfl(test_set) 
         self.train = train_set
         self.test = test_set
+        logging.info('Length of `train_set` this fold: {0{'.format(
+            len(self.train)))
+        logging.info('Length of `test_set` this fold: {0{'.format(
+            len(self.test)))
+        logging.info('== GET FOLD {0} =='.format(current_fold))
+        return current_fold
 
     def __discriminate_data(self, ori):
         '''
@@ -526,6 +590,7 @@ class Sample(object):
 
     def train_set(self):
         self.__check_mode('train')
+        self.__check_iteration()
         for item in self.train:
             try:
                 if self.get_unit() == 'epoch':
@@ -550,6 +615,7 @@ class Sample(object):
 
     def test_set(self):
         self.__check_mode('train')
+        self.__check_iteration()
         for item in self.test:
             try:
                 if self.get_unit() == 'epoch':

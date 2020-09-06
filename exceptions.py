@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+
 class ModeError(Exception):
     '''
     When training, both `train_set` and `test_set` are required. And these
@@ -12,6 +13,7 @@ class ModeError(Exception):
     '''
     pass
 
+
 class LackOfParameterError(Exception):
     '''
     Raised when sampling data. Different sample `unit` and sample `mode` needs
@@ -19,6 +21,7 @@ class LackOfParameterError(Exception):
     `Sample` object.
     '''
     pass
+
 
 class DataStateError(Exception):
     '''
@@ -28,6 +31,7 @@ class DataStateError(Exception):
     '''
     pass
 
+
 class BrokenTimestepError(Exception):
     '''
     Raised when sampling data in epochs. When epoch at edge cannot fill the
@@ -35,5 +39,12 @@ class BrokenTimestepError(Exception):
     function will raise `BrokenTimestepError`, and the best way to handle this
     exception is using `continue` statement and going into next iteration to
     skip (also dispose) this epoch.
+    '''
+    pass
+
+
+class KFoldError(Exception):
+    '''
+    Raised when iteration is not correctly set.
     '''
     pass
