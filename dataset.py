@@ -1673,11 +1673,12 @@ class Dataset(object):
         # check state
         if self.__get_state(data_name) < Dataset.PREPROCESSED:
             raise DataStateError('You cannot sample from a data not correctly '
-                                 'preprocessed. The target data `' + data_name
-                                 + '` has a state `' 
-                                 + self.__get_state(data_name, True) + '`.')
-        logging.debug('Data_name: ' + data_name)
-        logging.debug('Epoch: ' + str(epoch))
+                                 'preprocessed. The target data `{0}` has a '
+                                 'state `{1}`.'.format(data_name,
+                                                       self.__get_state(
+                                                           data_name, True)))
+        logging.debug('Data_name: {0}'.format(data_name))
+        logging.debug('Epoch: {0}'.format(str(epoch)))
         # without timestep
         if tmin == 0 and tmax == 0:
             # feature
@@ -1697,6 +1698,8 @@ class Dataset(object):
             assert timespan <= data_length
             # sample
             epoch_list = self.get_epochs(data_name)
+            logging.debug('The epoch between [{0}, {1}]'.format(epoch_list[0],
+                                                            epoch_list[-1]))
             idx = epoch_list.index(epoch)
             # if `idx - abs(tmin) < 0`, it will cause problem in slicing
             # so check if `idx - abs(tmin) < 0`
@@ -1725,9 +1728,9 @@ class Dataset(object):
                     # check `trunc` has expected shape
                     trunc = np.asarray(trunc, dtype=dtype)
                     if trunc.shape[1:] != sample_shape:
-                        raise ValueError('Shape of sample %s of sequence is '
-                                         'different from expected shape %s' %
-                                         (trunc.shape[1:], sample_shape))
+                        raise ValueError('Shape of sample {0} of sequence is '
+                                         'different from expected shape {1}'.\
+                                        format(trunc.shape[1:], sample_shape))
                     if idx - abs(tmin) >= 0:
                         x[:len(trunc)] = trunc
                     elif idx - abs(tmin) < 0:
@@ -1760,6 +1763,7 @@ class Dataset(object):
     
     def sample_serial_x(self, data_name, element_name, tmin, tmax,
                         data_padding, max_len, epoch_padding):
+        timespan = abs(tmin) + tmax + 1
         rst = []
         for epoch in self.get_epochs(data_name):
             try:
@@ -1773,10 +1777,17 @@ class Dataset(object):
                 raise ValueError('A certain `max_len` is needed for '
                                  'data_padding')
             if self.elements[element_name] == 'feature':
-                sample_shape = self.shape[element_name]
+                if timespan == 1:
+                    sample_shape = self.shape[element_name]
+                else:
+                    sample_shape = (timespan, ) + self.shape[element_name]
                 dtype = 'float32'
             else:
-                sample_shape = self.label_dict[element_name].shape()
+                if timespan == 1:
+                    sample_shape = self.label_dict[element_name].shape()
+                else:
+                    sample_shape = (timespan, ) + \
+                        self.label_dict[element_name].shape()
                 dtype = 'int32'
             x = np.full((max_len, ) + sample_shape, -1, dtype=dtype)
             trunc = rst[-max_len:]
