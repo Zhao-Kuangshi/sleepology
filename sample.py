@@ -250,8 +250,7 @@ class Sample(object):
     def __check_preparation(self):
         # 检查subgroup和split有没有做
         if not self.__preparation:
-            self.subgroups()
-            self.shuffle_split()
+            self.init()
 
     def __check_iteration(self):
         '''
@@ -385,6 +384,16 @@ class Sample(object):
             else:
                 rst.add(item[0])
         return list(rst)
+
+    def init(self):
+        '''
+        Initialize all the steps before sampling, including padding and
+        spliting the train_set and test_set.
+        '''
+        logging.info('== INITIALIZING SAMPLING ==')
+        self.subgroups()
+        self.shuffle_split()
+        logging.info('== INITIALIZING SAMPLING ==')
 
     def subgroups(self):
         '''
