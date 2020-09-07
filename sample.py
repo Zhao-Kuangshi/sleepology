@@ -8,7 +8,6 @@ from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
     KFoldError
 
 import json
-import random
 import logging
 import numpy as np
 import tableprint as tp
@@ -206,21 +205,24 @@ class Sample(object):
                         epoch_padding=content['epoch_padding'],
                         data_padding=content['data_padding'])
         sample.set_data_padding(content['data_padding'],
-                                max_len= content['max_len'])
+                                max_len= None if content['max_len'] == \
+                                    'Not Set' else content['max_len'])
         sample.set_x(content['x'])
         sample.set_y(content['y'])
         return sample
 
     def save(self, fpath):
         content = {'unit' : self.get_unit(),
-                   'tmin' : self.get_tmin,
+                   'tmin' : self.get_tmin(),
                    'tmax' : self.get_tmax(),
-                   'n_splits' : self.get_n_splits,
+                   'n_splits' : self.get_n_splits(),
                    'test_size' : self.get_test_size(),
-                   'balance' : 'True' if self.get_balance() else 'False',
-                   'epoch_padding' : 'True' if self.epoch_padding else 'False',
-                   'data_padding' : 'True' if self.data_padding else 'False',
-                   'max_len' : self.max_len,
+                   'class_balance' : self.get_class_balance(),
+                   'data_balance' : self.get_data_balance(),
+                   'epoch_padding' : self.epoch_padding,
+                   'data_padding' : self.data_padding,
+                   'max_len' : self.max_len if self.max_len is not None else \
+                    'Not Set',
                    'x' : self.get_x(),
                    'y' : self.get_y()}
         with open(fpath, 'w') as f:
@@ -279,7 +281,7 @@ class Sample(object):
             self.n_splits == 1:
             self.next_fold()
 
-    def check_dataset(self, dataset):
+    def __check_dataset(self, dataset):
         # check `x`
         if self.get_x() is None:
             raise LackOfParameterError('`x` hasn\'t set. Please use `set_x` '
@@ -341,7 +343,7 @@ class Sample(object):
             raise ValueError('Invalid mode. Must be \'train\' or \'predict\'.')
 
         # check dataset
-        self.check_dataset(dataset)
+        self.__check_dataset(dataset)
 
         # set dataset
         self.dataset = dataset
