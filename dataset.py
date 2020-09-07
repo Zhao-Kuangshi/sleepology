@@ -1524,7 +1524,10 @@ class Dataset(object):
         return rst
 
     def sample_data(self, data_name, lst, tmin=0, tmax=0, data_padding=True,
-                    max_len=None, epoch_padding=False):
+                    max_len=None, epoch_padding=False, test_data_name=None):
+        if test_data_name is None:
+            test_data_name = data_name
+
         x, y = lst
         x_samp = []
         if isinstance(x, str):
@@ -1537,6 +1540,7 @@ class Dataset(object):
             x_samp = x_samp[0]
         else:
             x_samp = np.asarray(x_samp)
+        # y
         if y is None:
             return x_samp
         else:
@@ -1546,7 +1550,7 @@ class Dataset(object):
             for i in y:
                 y_samp.append(
                     self.label_dict[i].get_array( \
-                        self.get_condition(data_name, i)))
+                        self.get_condition(test_data_name, i)))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
             else:
@@ -1554,7 +1558,11 @@ class Dataset(object):
             return (x_samp, y_samp)
 
     def sample_epoch(self, data_name, epoch, lst, tmin=0, tmax=0,
-                    epoch_padding=False):
+                    epoch_padding=False, test_data_name=None, test_epoch=None):
+        if test_data_name is None:
+            test_data_name = data_name
+            test_epoch = epoch
+
         x, y = lst
         x_samp = []
         if isinstance(x, str):
@@ -1566,6 +1574,7 @@ class Dataset(object):
             x_samp = x_samp[0]
         else:
             x_samp = np.asarray(x_samp)
+        # y
         if y is None:
             return x_samp
         else:
@@ -1573,7 +1582,8 @@ class Dataset(object):
             if isinstance(y, str):
                 y = [y]
             for i in y:
-                y_samp.append(self.sample_epoched_y(data_name, epoch, i))
+                y_samp.append(self.sample_epoched_y(test_data_name, test_epoch,
+                                                    i))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
             else:

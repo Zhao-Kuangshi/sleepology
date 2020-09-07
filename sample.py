@@ -430,13 +430,14 @@ class Sample(object):
             self.__k_fold[c] = ss.split(self.classes[c])
         logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
 
-    def next_fold(self, shuffle=True):
+    def next_fold(self, shuffle=True, disturb=False):
         self.__check_preparation()
         # start a new iteration
-        current_fold = self.__current_fold
+        current_fold = next(self.__current_fold)
         logging.info('== GET FOLD {0} =='.format(current_fold))
         train_set = []
         test_set = []
+        self.disturb = disturb
         debug_classes = 0
         debug_train_set_len = 0
         debug_test_set_len = 0
@@ -553,12 +554,20 @@ class Sample(object):
         if shuffle:
             logging.info('shuffle...')
             sfl(train_set)
-            sfl(test_set) 
+            sfl(test_set)
         self.train = train_set
         self.test = test_set
-        logging.info('Length of `train_set` this fold: {0{'.format(
+        # disturb, which disturb the match of x and y, i.e. shuffle the y
+        if disturb:
+            train_set = train_set.copy()
+            test_set = test_set.copy()
+            sfl(train_set)
+            sfl(test_set)
+            self.train_y = train_set
+            self.test_y = test_set
+        logging.info('Length of `train_set` this fold: {0}'.format(
             len(self.train)))
-        logging.info('Length of `test_set` this fold: {0{'.format(
+        logging.info('Length of `test_set` this fold: {0}'.format(
             len(self.test)))
         logging.info('== GET FOLD {0} =='.format(current_fold))
         return current_fold
@@ -602,9 +611,9 @@ class Sample(object):
     def train_set(self):
         self.__check_mode('train')
         self.__check_iteration()
-        for item in self.train:
+        for idx, item in enumerate(self.train):
             try:
-                if self.get_unit() == 'epoch':
+                if self.get_unit() == 'epoch' and not self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
                         item[1],
@@ -612,7 +621,7 @@ class Sample(object):
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding)
-                elif self.get_unit() == 'data':
+                elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
                         (self.get_x(), self.get_y()),
@@ -621,15 +630,35 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding)
+                elif self.get_unit() == 'epoch' and self.disturb:
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        test_data_name=self.train_y[idx][0],
+                        test_epoch=self.train_y[idx][1])
+                elif self.get_unit() == 'data' and not self.disturb:
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        test_data_name=self.train_y[idx])
             except BrokenTimestepError:
                 continue
 
     def test_set(self):
         self.__check_mode('train')
         self.__check_iteration()
-        for item in self.test:
+        for idx, item in enumerate(self.test):
             try:
-                if self.get_unit() == 'epoch':
+                if self.get_unit() == 'epoch' and not self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
                         item[1],
@@ -637,7 +666,7 @@ class Sample(object):
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding)
-                elif self.get_unit() == 'data':
+                elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
                         (self.get_x(), self.get_y()),
@@ -646,6 +675,26 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding)
+                elif self.get_unit() == 'epoch' and self.disturb:
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        test_data_name=self.test_y[idx][0],
+                        test_epoch=self.test_y[idx][1])
+                elif self.get_unit() == 'data' and self.disturb:
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        test_data_name=self.test_y[idx])
             except BrokenTimestepError:
                 continue
 
