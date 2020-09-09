@@ -269,14 +269,14 @@ class Sample(object):
         '''
         # look up if all the thing needed exist
         # that is, `self.train` & `self.test`
-        if not hasattr(self, 'train') or not hasattr(self, 'test') and \
+        if (not hasattr(self, 'train') or not hasattr(self, 'test')) and \
             self.n_splits > 1:
             raise KFoldError('you\'ve set `n_splits = {0}`, so you have {0}'
                              ' slices of `train_set` and `test_set`. You must '
                              'set an iteration by using `Sample.next_fold()`'
                              ' to initialize the train_set and test_set for '
                              'this slice.'.format(self.get_n_splits()))
-        if not hasattr(self, 'train') or not hasattr(self, 'test') and \
+        if (not hasattr(self, 'train') or not hasattr(self, 'test')) and \
             self.n_splits == 1:
             self.next_fold()
 
