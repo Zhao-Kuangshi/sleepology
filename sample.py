@@ -339,20 +339,24 @@ class Sample(object):
     def from_dataset(self, dataset, data_selection = None, mode = 'train'):
         # TODO: 原子化
         # set mode
-        if mode.lower() == 'train':
-            self.mode = 'train'
-        elif mode.lower() == 'predict':
-            self.mode = 'predict'
-            self.y = None
-            if self.data_padding and self.max_len is None:
-                raise ValueError('In mode `predict`, max_len of data_padding'+
-                                 ' must be set.')
-        else:
-            raise ValueError('Invalid mode. Must be \'train\' or \'predict\'.')
+        try:
+            if mode.lower() == 'train':
+                self.mode = 'train'
+            elif mode.lower() == 'predict':
+                self.mode = 'predict'
+                self.y = None
+                if self.data_padding and self.max_len is None:
+                    raise ValueError('In mode `predict`, max_len of '
+                                     'data_padding must be set.')
+            else:
+                raise ValueError('Invalid mode. Must be \'train\' or '
+                                 '\'predict\'.')
 
-        # check dataset
-        self.__check_dataset(dataset)
-        self.__check_label_dict(dataset)
+            # check dataset
+            self.__check_dataset(dataset)
+            self.__check_label_dict(dataset)
+        finally:
+            del self.mode
 
         # set dataset
         self.dataset = dataset
