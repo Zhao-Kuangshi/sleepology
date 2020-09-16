@@ -23,6 +23,15 @@ class LackOfParameterError(Exception):
     pass
 
 
+class LackOfLabelDictError(Exception):
+    '''
+    Raised when you input dataset to a `Sample` instance and `y` element in
+    that dataset does not have a label dict. Please use `Dataset.one_hot()`
+    function to create one or manually set one.
+    '''
+    pass
+
+
 class DataStateError(Exception):
     '''
     Raised when data in the dataset is not in a correct state, such as `ERROR`

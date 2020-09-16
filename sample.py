@@ -5,7 +5,7 @@ Created on Wed Aug 26 20:07:43 2020
 @author: 赵匡是
 """
 from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
-    KFoldError
+    KFoldError, LackOfLabelDictError
 
 import json
 import logging
@@ -252,6 +252,15 @@ class Sample(object):
         if not self.__preparation:
             self.init()
 
+    def __check_label_dict(self, dataset):
+        for y in self.get_y():
+            if y not in dataset.label_dict:
+                raise LackOfLabelDictError('The element `{0}` does not have '
+                                           'a label_dict. Please use '
+                                           '`Dataset.one_hot()` function to '
+                                           'create one or manually set one.'\
+                                            .format(y))
+
     def __check_iteration(self):
         '''
         In `train` mode, before use `Sample.train_set()` or `Sample.test_set()`
@@ -343,6 +352,7 @@ class Sample(object):
 
         # check dataset
         self.__check_dataset(dataset)
+        self.__check_label_dict(dataset)
 
         # set dataset
         self.dataset = dataset
