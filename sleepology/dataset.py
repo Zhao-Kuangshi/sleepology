@@ -24,6 +24,7 @@ import traceback
 os.environ["HDF5_USE_FILE_LOCKING"] = 'FALSE'
 
 package_root = os.path.dirname(os.path.abspath(__file__))
+package_root = os.path.abspath(os.path.join(package_root, '..'))
 
 class Dataset(object):
     '''
