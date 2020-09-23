@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='sleepology',
-    version='0.2.22',
+    version='0.2.23', # TODO: Do not forget changing version!
     author = 'Zhao-Kuangshi',
     author_email = 'contact@zhaokuangshi.cn',
     maintainer = 'Zhao-Kuangshi',
@@ -33,6 +33,6 @@ setup(
                         'datetime',
                         'mne>=0.18.1',
                         'tableprint>=0.9.1',
-                        'sklearn>=0.19.2',
+                        'scikit-learn>=0.19.2',
                         'pylsl']
 )
