@@ -24,7 +24,6 @@ import traceback
 os.environ["HDF5_USE_FILE_LOCKING"] = 'FALSE'
 
 package_root = os.path.dirname(os.path.abspath(__file__))
-package_root = os.path.abspath(os.path.join(package_root, '..'))
 
 class Dataset(object):
     '''
@@ -1281,7 +1280,8 @@ class Dataset(object):
         return rst
 
     def sample_data(self, data_name, lst, tmin=0, tmax=0, data_padding=True,
-                    max_len=None, epoch_padding=False, test_data_name=None):
+                    max_len=None, epoch_padding=False, test_data_name=None,
+                    autoencoder=False):
         if test_data_name is None:
             test_data_name = data_name
 
@@ -1298,7 +1298,9 @@ class Dataset(object):
         else:
             x_samp = np.asarray(x_samp)
         # y
-        if y is None:
+        if autoencoder:
+            return (x_samp, x_samp)
+        elif y is None:
             return x_samp
         else:
             y_samp = []
@@ -1315,7 +1317,8 @@ class Dataset(object):
             return (x_samp, y_samp)
 
     def sample_epoch(self, data_name, epoch, lst, tmin=0, tmax=0,
-                    epoch_padding=False, test_data_name=None, test_epoch=None):
+                    epoch_padding=False, test_data_name=None, test_epoch=None,
+                    autoencoder=False):
         if test_data_name is None:
             test_data_name = data_name
             test_epoch = epoch
@@ -1332,7 +1335,9 @@ class Dataset(object):
         else:
             x_samp = np.asarray(x_samp)
         # y
-        if y is None:
+        if autoencoder:
+            return (x_samp, x_samp)
+        elif y is None:
             return x_samp
         else:
             y_samp = []
@@ -1567,7 +1572,7 @@ class Dataset(object):
             x[-len(trunc):] = trunc
             rst = x
         else:
-            rst = np.asarray()
+            rst = np.asarray(rst)
         return rst
 
     def memory_usage(self, unit = 'GB'):

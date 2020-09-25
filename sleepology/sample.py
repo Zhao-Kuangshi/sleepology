@@ -20,8 +20,10 @@ def flatten(seq):
 class Sample(object):
     def __init__(self, unit='epoch', tmin=0, tmax=0, n_splits=10,
                  test_size=0.1, class_balance=True, data_balance=False,
-                 epoch_padding=False, data_padding=None):
+                 epoch_padding=False, data_padding=None,
+                 task='classification'):
         self.__editable = True
+        self.__autoencoder = False
         self.set_unit(unit)
         self.set_timespan(tmin, tmax)
         self.set_n_splits(n_splits)
@@ -30,6 +32,7 @@ class Sample(object):
         self.set_data_balance(data_balance)
         self.set_epoch_padding(epoch_padding)
         self.set_data_padding(data_padding)
+        self.set_task(task)
 
     def set_unit(self, unit):
         '''
@@ -139,7 +142,35 @@ class Sample(object):
         else:
             self.data_padding = data_padding
         self.max_len = max_len
-        
+
+    def set_task(self, task):
+        '''
+        Set task you want to train. `'classification'`, `regression` and
+        `autoencoder` is valid. Different task types use different sample
+        mechanisms. For example, in `regression` task, we have no idea to do
+        `class_balance`.
+
+        Parameters
+        ----------
+        task : str
+            'classification', 'regression' or 'autoencoder'.
+
+        Raises
+        ------
+        ValueError
+            Invalid parameter.
+
+        '''
+        candidate = ['classification', 'regression', 'autoencoder']
+        # check tsk
+        if task.lower() not in candidate:
+            raise ValueError('invalid task.')
+        if task == 'autoencoder':
+            self.__autoencoder = True
+            self.task = 'regression'
+        else:
+            self.task = task.lower()
+
     def set_x(self, x):
         # 不强求类型。可以是dataset的label甚至是condition(比如用很多condition来判断疾病(age, sex)→diagnose
         self.__check_editable()
@@ -147,6 +178,8 @@ class Sample(object):
             self.x = [x]
         elif isinstance(x, list):
             self.x = x
+        if self.__autoencoder:
+            self.set_y(self.get_x())
 
     def get_x(self):
         try:
@@ -158,9 +191,13 @@ class Sample(object):
         # unit是data就不是epoched，unit是epoch就是epoched。或者说，如果unit是data，就从condition里找，如果unit是epoch就从label里找。
         self.__check_editable()
         if isinstance(y, str):
-            self.y = [y]
+            y = [y]
         elif isinstance(y, list):
-            self.y = y
+            pass
+        if self.__autoencoder and self.get_x() is not None and y != \
+            self.get_x(): # assert x == y when using autoencoder
+            raise ValueError('When using autoencoder, `y` must be `x` itself.')
+        self.y = y
 
     def get_y(self):
         try:
@@ -185,6 +222,7 @@ class Sample(object):
                    ['data_padding', 'True' if self.data_padding else 'False'],
                    ['max_len', self.max_len if self.max_len is not None else
                     'Not Set'],
+                   ['task', self.task],
                    ['x', str(self.get_x())],
                    ['y', str(self.get_y())],
                    ['Sample Mode', self.mode if hasattr(self, 'mode') else 
@@ -203,7 +241,8 @@ class Sample(object):
                         class_balance=content['class_balance'],
                         data_balance=content['data_balance'],
                         epoch_padding=content['epoch_padding'],
-                        data_padding=content['data_padding'])
+                        data_padding=content['data_padding'],
+                        task=content['task'])
         sample.set_data_padding(content['data_padding'],
                                 max_len= None if content['max_len'] == \
                                     'Not Set' else content['max_len'])
@@ -212,6 +251,10 @@ class Sample(object):
         return sample
 
     def save(self, fpath):
+        if self.__autoencoder:
+            task = 'autoencoder'
+        else:
+            task = self.task
         content = {'unit' : self.get_unit(),
                    'tmin' : self.get_tmin(),
                    'tmax' : self.get_tmax(),
@@ -224,7 +267,8 @@ class Sample(object):
                    'max_len' : self.max_len if self.max_len is not None else \
                     'Not Set',
                    'x' : self.get_x(),
-                   'y' : self.get_y()}
+                   'y' : self.get_y(),
+                   'task' : task}
         with open(fpath, 'w') as f:
             json.dump(content, f)
 
@@ -253,13 +297,14 @@ class Sample(object):
             self.init()
 
     def __check_label_dict(self, dataset):
-        for y in self.get_y():
-            if y not in dataset.label_dict:
-                raise LackOfLabelDictError('The element `{0}` does not have '
-                                           'a label_dict. Please use '
-                                           '`Dataset.one_hot()` function to '
-                                           'create one or manually set one.'\
-                                            .format(y))
+        if not self.__autoencoder:
+            for y in self.get_y():
+                if y not in dataset.label_dict:
+                    raise LackOfLabelDictError('The element `{0}` does not '
+                                               'have a label_dict. Please use '
+                                               '`Dataset.one_hot()` function '
+                                               'to create one or manually set '
+                                               'one.'.format(y))
 
     def __check_iteration(self):
         '''
@@ -304,10 +349,11 @@ class Sample(object):
                 # `condition` is not epoched feature, cannot represent an epoch)
                 elif self.get_unit() == 'epoch' and \
                     dataset.elements[item] == 'condition':
-                    raise AssertionError('while unit == `epoch`, `x` cannot be'
-                                         ' `condition` (because `condition` is'
-                                         ' not epoched feature, cannot'
-                                         ' represent an epoch)')
+                    raise AssertionError('while unit == `epoch`, `x` '
+                                         'cannot be `condition` (because '
+                                         '`condition` is not epoched '
+                                         'feature, cannot represent an '
+                                         'epoch)')
         # check `y`
         if self.mode == 'train':  # in training mode, `y` must provided
             if self.get_y() is None:
@@ -322,10 +368,16 @@ class Sample(object):
                     # check if `y` is `label` or `condition`
                     elif dataset.elements[item] != 'label' and \
                         dataset.elements[item] != 'condition':
-                        raise AssertionError('The `y` must be `label` or'
-                                             ' `condition`. But ' + item +
-                                             ' was a `' +
-                                             dataset.elements[item] +'`.')
+                        if len(self.get_x()) == 1 and self.get_x() == \
+                            self.get_y():
+                            logging.info('Use mode AUTOENCODER.')
+                            print('[INFO] Use mode AUTOENCODER.')
+                            self.set_task('autoencoder')
+                        else:
+                            raise AssertionError('The `y` must be `label` or'
+                                                 ' `condition`. But ' + item +
+                                                 ' was a `' +
+                                                 dataset.elements[item] +'`.')
                     # while unit == `data`, `y` must be `condition` (because
                     # `label` is epoched label, cannot represent a data)
                     elif self.get_unit() == 'data' and \
@@ -337,7 +389,6 @@ class Sample(object):
         # and in prediction mode, `y` will not be used
 
     def from_dataset(self, dataset, data_selection = None, mode = 'train'):
-        # TODO: 原子化
         # set mode
         try:
             if mode.lower() == 'train':
@@ -355,8 +406,9 @@ class Sample(object):
             # check dataset
             self.__check_dataset(dataset)
             self.__check_label_dict(dataset)
-        finally:
+        except Exception as e:
             del self.mode
+            raise e
 
         # set dataset
         self.dataset = dataset
@@ -405,11 +457,13 @@ class Sample(object):
         spliting the train_set and test_set.
         '''
         logging.info('== INITIALIZING SAMPLING ==')
-        self.subgroups()
+        if self.task == 'classification':
+            self.subgroups()
         self.shuffle_split()
         logging.info('== INITIALIZING SAMPLING ==')
 
     def subgroups(self):
+        # Only used in classification tasks
         '''
         Split data or epochs by classes into subgroups.
         Generate `Sample.classes`, which is a `dict` of different classes.
@@ -433,16 +487,19 @@ class Sample(object):
         `Sample.get_test_size()` of the data will act as test set.
 
         '''
-        logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
+        logging.info('== SHUFFLE AND SPLIT DATASET ==')
         logging.info('n_splits = {0}'.format(self.get_n_splits()))
         logging.info('test_size = {0}'.format(self.get_test_size()))
         ss = ShuffleSplit(n_splits=self.get_n_splits(),
                           test_size=self.get_test_size())
         self.__current_fold = iter(range(1, self.get_n_splits() + 1))
-        self.__k_fold = {}
-        for c in self.classes:
-            self.__k_fold[c] = ss.split(self.classes[c])
-        logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
+        if self.task == 'classification':
+            self.__k_fold = {}
+            for c in self.classes:
+                self.__k_fold[c] = ss.split(self.classes[c])
+        else:
+            self.__k_fold = ss.split(self.data_selection)
+        logging.info('== SHUFFLE AND SPLIT DATASET ==')
 
     def next_fold(self, shuffle=True, disturb=False):
         self.__check_preparation()
@@ -455,115 +512,122 @@ class Sample(object):
         debug_classes = 0
         debug_train_set_len = 0
         debug_test_set_len = 0
-        # append train_set and test_set of each class
-        for c in self.__k_fold:
-            debug_classes += 1
-            train, test = next(self.__k_fold[c])
-            train = [self.classes[c][i] for i in train]
-            test = [self.classes[c][i] for i in test]
-            train_set.append(train)
-            test_set.append(test)
-            debug_train_set_len += len(train)
-            debug_test_set_len += len(test)
-        ## train_set is a 2-D list. The first dimension is `class`. The second
-        ## dimension is `data` or `(data, epoch)` tuple.
-        logging.info('Dataset has ' + str(debug_classes) + ' classes')
-        logging.info('Current train_set length ' + str(debug_train_set_len))
-        logging.info('Current test_set length ' + str(debug_test_set_len))
-        if self.get_class_balance() and not self.get_data_balance():
-            logging.info('Balancing classes ...')
-            # find the max_len of different classes. Then oversample other
-            # class to the max_len
-            train_len = max(len(i) for i in train_set)
-            logging.info('The max_len of train_set is ' + str(train_len))
-            test_len = max(len(i) for i in test_set)
-            logging.info('The max_len of test_set is ' + str(test_len))
-            # balance every class
-            for pcs in range(len(train_set)):  # each piece is a class
-                idx = np.random.choice(range(len(train_set[pcs])), train_len)
-                train_set[pcs] = [train_set[pcs][i] for i in idx]
-                logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
-                    str(len(train_set[pcs]))))
-            for pcs in range(len(test_set)):  # each piece is a class
-                idx = np.random.choice(range(len(test_set[pcs])), test_len)
-                test_set[pcs] = [test_set[pcs][i] for i in idx]
-                logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
-                    str(len(test_set[pcs]))))
-            train_set = flatten(train_set)
-            test_set = flatten(test_set)
-        elif self.get_data_balance() and not self.get_class_balance():
-            logging.info('Balancing data ...')
-            # this condition assert self.unit == 'epoch'
-            # don't care about classes. Concatenate classes
-            train_set = flatten(train_set)
-            logging.info('Flatten train_set, length: ' + len(train_set))
-            test_set = flatten(test_set)
-            logging.info('Flatten test_set, length: ' + len(test_set))
-            # and discriminate train_set and test_set by `data_name`
-            train_set = list(self.__discriminate_data(train_set).values())
-            test_set = list(self.__discriminate_data(test_set).values())
-            ## Now, the train_set is also a 2-D list. The first dimension is
-            ## `data`. The second dimension is `(data, epoch)` tuple.
-            # find the max_len of different data. Then oversample other data
-            # to the max_len
-            train_len = max(len(i) for i in train_set)
-            logging.info('The max_len of train_set is ' + str(train_len))
-            test_len = max(len(i) for i in test_set)
-            logging.info('The max_len of test_set is ' + str(test_len))
-            # balance every data
-            for pcs in range(len(train_set)):  # each piece is a datum
-                idx = np.random.choice(range(len(train_set[pcs])), train_len)
-                train_set[pcs] = [train_set[pcs][i] for i in idx]
-                logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
-                    str(len(train_set[pcs]))))
-            for pcs in range(len(test_set)):  # each piece is a datum
-                idx = np.random.choice(range(len(test_set[pcs])), test_len)
-                test_set[pcs] = [test_set[pcs][i] for i in idx]
-                logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
-                    str(len(test_set[pcs]))))
-            train_set = flatten(train_set)
-            test_set = flatten(test_set)
-        elif self.get_class_balance() and self.get_data_balance():
-            logging.info('Balancing data and balancing classes ...')
-            logging.info('> Discriminate different data in classes. So it '
-                         'generate a (class, data) structure')
-            tem = []
-            for ts in train_set:
-                ## extending a 2-D list. The first dimension is `data`. The
-                ## second dimension is `(data, epoch)` tuple.
-                tem.extend(list(self.__discriminate_data(ts).values()))
-            train_set = tem
-            tem = []
-            for tt in test_set:
-                ## extending a 2-D list. The first dimension is `data`. The
-                ## second dimension is `(data, epoch)` tuple.
-                tem.extend(list(self.__discriminate_data(tt).values()))
-            test_set = tem
-            ## the train_set and test_set remain a 2-D array because we have
-            ## used `extend` instead of `append`. The first dimension is a
-            ## combination of `data` and `class`. A list of certain
-            ## `(data, class)` in the second dimension.
-            # compute max_len of train_set and test_set
-            train_len = max(len(i) for i in train_set)
-            logging.info('The max_len of train_set is ' + str(train_len))
-            test_len = max(len(i) for i in test_set)
-            logging.info('The max_len of test_set is ' + str(test_len))
-            # balance every (data, class)
-            for pcs in range(len(train_set)):
-                idx = np.random.choice(range(len(train_set[pcs])), train_len)
-                train_set[pcs] = [train_set[pcs][i] for i in idx]
-                logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
-                    str(len(train_set[pcs]))))
-            for pcs in range(len(test_set)):
-                idx = np.random.choice(range(len(test_set[pcs])), test_len)
-                test_set[pcs] = [test_set[pcs][i] for i in idx]
-                logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
-                    str(len(test_set[pcs]))))
-            train_set = flatten(train_set)
-            test_set = flatten(test_set)
+        if self.task == 'regression':
+            train, test = next(self.__k_fold)
+            train = [self.data_selection[i] for i in train]
+            test = [self.data_selection[i] for i in test]
+            train_set.extend(train)
+            test_set.extend(test)
         else:
-            train_set = flatten(train_set)
-            test_set = flatten(test_set)
+            # append train_set and test_set of each class
+            for c in self.__k_fold:
+                debug_classes += 1
+                train, test = next(self.__k_fold[c])
+                train = [self.classes[c][i] for i in train]
+                test = [self.classes[c][i] for i in test]
+                train_set.append(train)
+                test_set.append(test)
+                debug_train_set_len += len(train)
+                debug_test_set_len += len(test)
+            ## train_set is a 2-D list. The first dimension is `class`. The
+            ## second dimension is `data` or `(data, epoch)` tuple.
+            logging.info('Dataset has ' + str(debug_classes) + ' classes')
+            logging.info('Current train_set length ' + str(debug_train_set_len))
+            logging.info('Current test_set length ' + str(debug_test_set_len))
+            if self.get_class_balance() and not self.get_data_balance():
+                logging.info('Balancing classes ...')
+                # find the max_len of different classes. Then oversample other
+                # class to the max_len
+                train_len = max(len(i) for i in train_set)
+                logging.info('The max_len of train_set is ' + str(train_len))
+                test_len = max(len(i) for i in test_set)
+                logging.info('The max_len of test_set is ' + str(test_len))
+                # balance every class
+                for pcs in range(len(train_set)):  # each piece is a class
+                    idx = np.random.choice(range(len(train_set[pcs])), train_len)
+                    train_set[pcs] = [train_set[pcs][i] for i in idx]
+                    logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
+                        str(len(train_set[pcs]))))
+                for pcs in range(len(test_set)):  # each piece is a class
+                    idx = np.random.choice(range(len(test_set[pcs])), test_len)
+                    test_set[pcs] = [test_set[pcs][i] for i in idx]
+                    logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
+                        str(len(test_set[pcs]))))
+                train_set = flatten(train_set)
+                test_set = flatten(test_set)
+            elif self.get_data_balance() and not self.get_class_balance():
+                logging.info('Balancing data ...')
+                # this condition assert self.unit == 'epoch'
+                # don't care about classes. Concatenate classes
+                train_set = flatten(train_set)
+                logging.info('Flatten train_set, length: ' + len(train_set))
+                test_set = flatten(test_set)
+                logging.info('Flatten test_set, length: ' + len(test_set))
+                # and discriminate train_set and test_set by `data_name`
+                train_set = list(self.__discriminate_data(train_set).values())
+                test_set = list(self.__discriminate_data(test_set).values())
+                ## Now, the train_set is also a 2-D list. The first dimension is
+                ## `data`. The second dimension is `(data, epoch)` tuple.
+                # find the max_len of different data. Then oversample other data
+                # to the max_len
+                train_len = max(len(i) for i in train_set)
+                logging.info('The max_len of train_set is ' + str(train_len))
+                test_len = max(len(i) for i in test_set)
+                logging.info('The max_len of test_set is ' + str(test_len))
+                # balance every data
+                for pcs in range(len(train_set)):  # each piece is a datum
+                    idx = np.random.choice(range(len(train_set[pcs])), train_len)
+                    train_set[pcs] = [train_set[pcs][i] for i in idx]
+                    logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
+                        str(len(train_set[pcs]))))
+                for pcs in range(len(test_set)):  # each piece is a datum
+                    idx = np.random.choice(range(len(test_set[pcs])), test_len)
+                    test_set[pcs] = [test_set[pcs][i] for i in idx]
+                    logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
+                        str(len(test_set[pcs]))))
+                train_set = flatten(train_set)
+                test_set = flatten(test_set)
+            elif self.get_class_balance() and self.get_data_balance():
+                logging.info('Balancing data and balancing classes ...')
+                logging.info('> Discriminate different data in classes. So it '
+                             'generate a (class, data) structure')
+                tem = []
+                for ts in train_set:
+                    ## extending a 2-D list. The first dimension is `data`. The
+                    ## second dimension is `(data, epoch)` tuple.
+                    tem.extend(list(self.__discriminate_data(ts).values()))
+                train_set = tem
+                tem = []
+                for tt in test_set:
+                    ## extending a 2-D list. The first dimension is `data`. The
+                    ## second dimension is `(data, epoch)` tuple.
+                    tem.extend(list(self.__discriminate_data(tt).values()))
+                test_set = tem
+                ## the train_set and test_set remain a 2-D array because we have
+                ## used `extend` instead of `append`. The first dimension is a
+                ## combination of `data` and `class`. A list of certain
+                ## `(data, class)` in the second dimension.
+                # compute max_len of train_set and test_set
+                train_len = max(len(i) for i in train_set)
+                logging.info('The max_len of train_set is ' + str(train_len))
+                test_len = max(len(i) for i in test_set)
+                logging.info('The max_len of test_set is ' + str(test_len))
+                # balance every (data, class)
+                for pcs in range(len(train_set)):
+                    idx = np.random.choice(range(len(train_set[pcs])), train_len)
+                    train_set[pcs] = [train_set[pcs][i] for i in idx]
+                    logging.debug('[{0}] sample train_set to {1}.'.format(str(pcs),
+                        str(len(train_set[pcs]))))
+                for pcs in range(len(test_set)):
+                    idx = np.random.choice(range(len(test_set[pcs])), test_len)
+                    test_set[pcs] = [test_set[pcs][i] for i in idx]
+                    logging.debug('[{0}] sample test_set to {1}.'.format(str(pcs),
+                        str(len(test_set[pcs]))))
+                train_set = flatten(train_set)
+                test_set = flatten(test_set)
+            else:
+                train_set = flatten(train_set)
+                test_set = flatten(test_set)
         # finally
         if shuffle:
             logging.info('shuffle...')
@@ -634,7 +698,8 @@ class Sample(object):
                         (self.get_x(), self.get_y()),
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
-                        epoch_padding=self.epoch_padding)
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -643,7 +708,8 @@ class Sample(object):
                         tmax=self.get_tmax(),
                         data_padding=self.data_padding,
                         max_len=self.max_len,
-                        epoch_padding=self.epoch_padding)
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -653,7 +719,8 @@ class Sample(object):
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.train_y[idx][0],
-                        test_epoch=self.train_y[idx][1])
+                        test_epoch=self.train_y[idx][1],
+                        autoencoder=self.__autoencoder)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -663,7 +730,8 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
-                        test_data_name=self.train_y[idx])
+                        test_data_name=self.train_y[idx],
+                        autoencoder=self.__autoencoder)
             except BrokenTimestepError:
                 continue
 
@@ -679,7 +747,8 @@ class Sample(object):
                         (self.get_x(), self.get_y()),
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
-                        epoch_padding=self.epoch_padding)
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -688,7 +757,8 @@ class Sample(object):
                         tmax=self.get_tmax(),
                         data_padding=self.data_padding,
                         max_len=self.max_len,
-                        epoch_padding=self.epoch_padding)
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -698,7 +768,8 @@ class Sample(object):
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.test_y[idx][0],
-                        test_epoch=self.test_y[idx][1])
+                        test_epoch=self.test_y[idx][1],
+                        autoencoder=self.__autoencoder)
                 elif self.get_unit() == 'data' and self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -708,7 +779,8 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
-                        test_data_name=self.test_y[idx])
+                        test_data_name=self.test_y[idx],
+                        autoencoder=self.__autoencoder)
             except BrokenTimestepError:
                 continue
 
