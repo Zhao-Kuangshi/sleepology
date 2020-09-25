@@ -1352,93 +1352,6 @@ class Dataset(object):
                 y_samp = np.asarray(y_samp)
             return (x_samp, y_samp)
 
-    """
-    def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
-                               tmax=0, padding=False, array_type=int):
-        '''当返回None时，跳过这个epoch'''
-        # check state
-        if self.__get_state(data_name) < Dataset.PREPROCESSED:
-            raise DataStateError('You cannot sample from a data not correctly '
-                                 'preprocessed. The target data `' + data_name
-                                 + '` has a state `' 
-                                 + self.__get_state(data_name, True) + '`.')
-        # without timestep
-        if tmin == 0 and tmax == 0:
-            # feature
-            if self.elements[element_name] == 'feature':
-                return self.get_feature(data_name, epoch, element_name)
-            # label
-            elif self.elements[element_name] == 'label':
-                return self.get_label(data_name, epoch, element_name)
-        # with timestep
-        else:
-            # check timespan
-            # timespan cannot be longer than data_length
-            data_length = len(self.get_epochs(data_name))
-            logging.info('Data Length: ' + str(data_length))
-            assert tmax >= 0
-            assert abs(tmin) + tmax <= data_length
-            # sample
-            epoch_list = self.get_epochs(data_name)
-            # at the start of the series
-            if epoch_list[epoch] < epoch_list[abs(tmin)]:
-                if padding:  # pre-padding
-                    # feature
-                    if self.elements[element_name] == 'feature':
-                        r = np.array([np.zeros(self.shape[element_name])] \
-                                     * (abs(tmin) - epoch) 
-                            + [self.get_feature(data_name, i, element_name) \
-                               for i in epoch_list[: epoch + tmax + 1]])
-                    # label
-                    elif self.elements[element_name] == 'label':
-                        p = self.label_dict[element_name].get_array( \
-                                                None, array_type = array_type)
-                        r = np.array([p] * (abs(tmin) - epoch) 
-                            + [self.label_dict[element_name].get_array( \
-                            self.get_label(data_name,
-                                             epoch[i], element_name), \
-                                array_type = array_type) \
-                               for i in epoch_list[: epoch + tmax + 1]])
-                # if not padding, the epoch at edge will be disposed
-                else:
-                    raise BrokenTimestepError()
-            # at the end of the series
-            elif epoch_list[epoch] > epoch_list[data_length - tmax - 1]:
-                if padding:  # post-padding
-                    # feature
-                    if self.elements[element_name] == 'feature':
-                        r = np.array([self.get_feature(data_name,
-                                                         i, element_name) \
-                                      for i in epoch_list[epoch - abs(tmin) :]]
-                        + [np.zeros(self.shape[element_name])] \
-                            * (tmax + epoch + 1 - data_length))
-                    # label
-                    elif self.elements[element_name] == 'label':
-                        p = self.label_dict[element_name].get_array( \
-                                                None, array_type = array_type)
-                        r = np.array([self.label_dict[element_name].get_array(
-                                        self.get_label(data_name,
-                                                         i, element_name), \
-                                            array_type = array_type) \
-                                      for i in epoch_list[epoch - abs(tmin) :]]
-                        + [p] * (tmax + epoch + 1 - data_length))
-            else: # normal situation
-                # feature
-                if self.elements[element_name] == 'feature':
-                    r = np.array([self.get_feature(data_name, i,
-                                                     element_name) 
-                                  for i in epoch_list[epoch - abs(tmin) : \
-                                                      epoch + tmax + 1]])
-                # label
-                elif self.elements[element_name] == 'label':
-                    r = np.array([self.label_dict[element_name].get_array( \
-                            self.get_label(data_name, epoch[i], element_name),
-                            array_type = array_type)
-                            for i in epoch_list[epoch - abs(tmin) : \
-                                                      epoch + tmax + 1]])
-            return r
-    """
-
     def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
                                tmax=0, padding=False, array_type=int):
         '''当返回None时，跳过这个epoch'''
@@ -1458,7 +1371,9 @@ class Dataset(object):
                 return self.get_feature(data_name, epoch, element_name)
             # label
             elif self.elements[element_name] == 'label':
-                return self.get_label(data_name, epoch, element_name)
+                return self.label_dict[element_name].get_array( \
+                        self.get_label(data_name, epoch, element_name),
+                        array_type = array_type)
         # with timestep
         else:
             # check timespan
@@ -1709,9 +1624,3 @@ class Dataset(object):
         self.__df_save_label_dict_0_2(disk_file)
         self.__df_save_dataset_0_2(disk_file)
         disk_file.close()
-
-
-class IndexManager(object):
-    def __init__(self, *args):
-        self.idx = {}
-        

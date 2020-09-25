@@ -298,6 +298,14 @@ class Sample(object):
 
     def __check_label_dict(self, dataset):
         if not self.__autoencoder:
+            for x in self.get_x():
+                if dataset.elements[x] == 'label' and x not in \
+                    dataset.label_dict:
+                    raise LackOfLabelDictError('The element `{0}` does not '
+                                               'have a label_dict. Please use '
+                                               '`Dataset.one_hot()` function '
+                                               'to create one or manually set '
+                                               'one.'.format(x))
             for y in self.get_y():
                 if y not in dataset.label_dict:
                     raise LackOfLabelDictError('The element `{0}` does not '
@@ -686,103 +694,201 @@ class Sample(object):
             rst[t[0]].append(t)
         return rst
 
-    def train_set(self):
-        self.__check_mode('train')
-        self.__check_iteration()
-        for idx, item in enumerate(self.train):
-            try:
-                if self.get_unit() == 'epoch' and not self.disturb:
-                    yield self.dataset.sample_epoch(
-                        item[0],
-                        item[1],
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(), 
-                        epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
-                elif self.get_unit() == 'data' and not self.disturb:
-                    yield self.dataset.sample_data(
-                        item,
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(),
-                        data_padding=self.data_padding,
-                        max_len=self.max_len,
-                        epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
-                elif self.get_unit() == 'epoch' and self.disturb:
-                    yield self.dataset.sample_epoch(
-                        item[0],
-                        item[1],
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(), 
-                        epoch_padding=self.epoch_padding,
-                        test_data_name=self.train_y[idx][0],
-                        test_epoch=self.train_y[idx][1],
-                        autoencoder=self.__autoencoder)
-                elif self.get_unit() == 'data' and not self.disturb:
-                    yield self.dataset.sample_data(
-                        item,
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(),
-                        data_padding=self.data_padding,
-                        max_len=self.max_len,
-                        epoch_padding=self.epoch_padding,
-                        test_data_name=self.train_y[idx],
-                        autoencoder=self.__autoencoder)
-            except BrokenTimestepError:
-                continue
+    def train_set(self, generator = True):
+        if generator:
+            self.__check_mode('train')
+            self.__check_iteration()
+            for idx, item in enumerate(self.train):
+                try:
+                    if self.get_unit() == 'epoch' and not self.disturb:
+                        yield self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and not self.disturb:
+                        yield self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'epoch' and self.disturb:
+                        yield self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.train_y[idx][0],
+                            test_epoch=self.train_y[idx][1],
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and not self.disturb:
+                        yield self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.train_y[idx],
+                            autoencoder=self.__autoencoder)
+                except BrokenTimestepError:
+                    continue
+        else:  # do not use generator
+            self.__check_mode('train')
+            self.__check_iteration()
+            for idx, item in enumerate(self.train):
+                try:
+                    if self.get_unit() == 'epoch' and not self.disturb:
+                        return self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and not self.disturb:
+                        return self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'epoch' and self.disturb:
+                        return self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.train_y[idx][0],
+                            test_epoch=self.train_y[idx][1],
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and not self.disturb:
+                        return self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.train_y[idx],
+                            autoencoder=self.__autoencoder)
+                except BrokenTimestepError:
+                    continue
 
-    def test_set(self):
-        self.__check_mode('train')
-        self.__check_iteration()
-        for idx, item in enumerate(self.test):
-            try:
-                if self.get_unit() == 'epoch' and not self.disturb:
-                    yield self.dataset.sample_epoch(
-                        item[0],
-                        item[1],
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(), 
-                        epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
-                elif self.get_unit() == 'data' and not self.disturb:
-                    yield self.dataset.sample_data(
-                        item,
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(),
-                        data_padding=self.data_padding,
-                        max_len=self.max_len,
-                        epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
-                elif self.get_unit() == 'epoch' and self.disturb:
-                    yield self.dataset.sample_epoch(
-                        item[0],
-                        item[1],
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(), 
-                        epoch_padding=self.epoch_padding,
-                        test_data_name=self.test_y[idx][0],
-                        test_epoch=self.test_y[idx][1],
-                        autoencoder=self.__autoencoder)
-                elif self.get_unit() == 'data' and self.disturb:
-                    yield self.dataset.sample_data(
-                        item,
-                        (self.get_x(), self.get_y()),
-                        tmin=self.get_tmin(),
-                        tmax=self.get_tmax(),
-                        data_padding=self.data_padding,
-                        max_len=self.max_len,
-                        epoch_padding=self.epoch_padding,
-                        test_data_name=self.test_y[idx],
-                        autoencoder=self.__autoencoder)
-            except BrokenTimestepError:
-                continue
+    def test_set(self, generator = True):
+        if generator:
+            self.__check_mode('train')
+            self.__check_iteration()
+            for idx, item in enumerate(self.test):
+                try:
+                    if self.get_unit() == 'epoch' and not self.disturb:
+                        yield self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and not self.disturb:
+                        yield self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'epoch' and self.disturb:
+                        yield self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.test_y[idx][0],
+                            test_epoch=self.test_y[idx][1],
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and self.disturb:
+                        yield self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.test_y[idx],
+                            autoencoder=self.__autoencoder)
+                except BrokenTimestepError:
+                    continue
+        else:  # do not use generator
+            self.__check_mode('train')
+            self.__check_iteration()
+            for idx, item in enumerate(self.test):
+                try:
+                    if self.get_unit() == 'epoch' and not self.disturb:
+                        return self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and not self.disturb:
+                        return self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'epoch' and self.disturb:
+                        return self.dataset.sample_epoch(
+                            item[0],
+                            item[1],
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(), 
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.test_y[idx][0],
+                            test_epoch=self.test_y[idx][1],
+                            autoencoder=self.__autoencoder)
+                    elif self.get_unit() == 'data' and self.disturb:
+                        return self.dataset.sample_data(
+                            item,
+                            (self.get_x(), self.get_y()),
+                            tmin=self.get_tmin(),
+                            tmax=self.get_tmax(),
+                            data_padding=self.data_padding,
+                            max_len=self.max_len,
+                            epoch_padding=self.epoch_padding,
+                            test_data_name=self.test_y[idx],
+                            autoencoder=self.__autoencoder)
+                except BrokenTimestepError:
+                    continue
 
     def sample(self):
         self.__check_mode('predict')
