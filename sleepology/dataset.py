@@ -1191,7 +1191,7 @@ class Dataset(object):
 
     ### SAMPLE ###
 
-    def stat_classes(self, elements):
+    def stat_classes(self, elements, unit=None):
         '''
         Add up different classes (or class group) according to input elements.
         Return a dict whose `keys()` are classes and `values()` are epochs for
@@ -1226,7 +1226,9 @@ class Dataset(object):
             `(data_name, epoch)` tuples.
 
         '''
-        
+        unit_candidate = ['epoch', 'data']
+        if unit is not None and unit not in unit_candidate:
+            raise ValueError('Invalid unit. Only \'epoch\' or \'data\' allowd')
         if isinstance(elements, str):
             elements = [elements]
         elif isinstance(elements, list):
@@ -1254,7 +1256,13 @@ class Dataset(object):
                                  ' names or condition types.')
         # check passed
         rst = dict()
-        if len(label) == 0:  # the unit is `data`
+        if unit is None:
+            if len(label) == 0:
+                unit = 'data'
+            else:
+                unit = 'epoch'
+
+        if unit == 'data':
             for d in self.get_data():
                 c = []
                 for cond in condition:

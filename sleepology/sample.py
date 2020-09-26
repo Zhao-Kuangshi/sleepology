@@ -477,7 +477,7 @@ class Sample(object):
         Generate `Sample.classes`, which is a `dict` of different classes.
         '''
         logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
-        classes = self.dataset.stat_classes(self.get_y())
+        classes = self.dataset.stat_classes(self.get_y(), self.get_unit())
         self.classes = {}
         for c in classes:
             self.classes[c] = [i for i in classes[c] 
