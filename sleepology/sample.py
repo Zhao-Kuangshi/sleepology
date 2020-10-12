@@ -396,7 +396,8 @@ class Sample(object):
                                                  'cannot represent a data)')
         # and in prediction mode, `y` will not be used
 
-    def from_dataset(self, dataset, data_selection = None, mode = 'train'):
+    def from_dataset(self, dataset, data_selection:dict=None,
+                     mode:str='train'):
         # set mode
         try:
             if mode.lower() == 'train':
@@ -421,12 +422,22 @@ class Sample(object):
         # set dataset
         self.dataset = dataset
         self.dataset.shape_check()
-        if data_selection is None and self.unit == 'epoch':
+        if data_selection is None and self.get_unit() == 'epoch':
             self.data_selection = self.dataset.select_epochs()
-        elif data_selection is None and self.unit == 'data':
+        elif data_selection is None and self.get_unit() == 'data':
             self.data_selection = self.dataset.select_data()
         else:
-            self.data_selection = data_selection
+            # data_selection has parameter in form of dict
+            self.__selection = data_selection
+            self.data_selection = set()
+            if self.get_unit() == 'epoch':
+                for e in data_selection.keys():
+                    self.data_selection.intersection_update(
+                        self.dataset.select_epochs(e, data_selection[e]))
+            else:
+                for e in data_selection.keys():
+                    self.data_selection.intersection_update(
+                        self.dataset.select_data(e, data_selection[e]))
 
         # set max_len
         if self.data_padding and self.max_len is None:
@@ -477,6 +488,7 @@ class Sample(object):
         Generate `Sample.classes`, which is a `dict` of different classes.
         '''
         logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
+        # TODO : delete classes which not being selected when using `from_dataset`
         classes = self.dataset.stat_classes(self.get_y(), self.get_unit())
         self.classes = {}
         for c in classes:

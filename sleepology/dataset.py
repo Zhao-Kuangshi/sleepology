@@ -501,14 +501,15 @@ class Dataset(object):
     def __df_del_epoch(self, disk_file, data_name, epoch):
         disk_file['dataset'][data_name]['data'].pop(str(epoch))
 
-    def select_epochs(self, label_name=None, label_value=None, data_name=None):
+    def select_epochs(self, element_name=None, element_value=None,
+                      data_name=None):
         # data_name
         if data_name is None:
             data_name = self.get_data()
         elif isinstance(data_name, str):
             data_name = [data_name]
         # label_name & label_value
-        if (label_name is None) and (label_value is None):
+        if element_name is None:
             rst = list()
             for d in data_name:
                 if self.__get_state(d) < Dataset.PREPROCESSED:
@@ -516,21 +517,27 @@ class Dataset(object):
                 logging.info(d)
                 for epoch in self.get_epochs(d):
                     rst.append((d, epoch))
-        elif label_name is not None and label_value is not None:
+        elif element_name is not None and element_value is not None:
             rst = list()
-            if not isinstance(label_value, list):
-                label_value = [label_value]
+            if not isinstance(element_value, list):
+                element_value = [element_value]
             for d in data_name:
                 if self.__get_state(d) == Dataset.ERROR:
                     continue
                 logging.info(d)
-                for epoch in self.get_epochs(d):
-                    for l in label_value:
-                        if self.get_label(d, epoch, label_name) == l:
+                if self.elements[element_name] == 'label':
+                    for epoch in self.get_epochs(d):
+                        if self.get_label(d, epoch, element_name) in \
+                            element_value:
+                            rst.append((d, epoch))
+                elif self.elements[element_name] == 'condition':
+                    if self.get_condition(d, element_name) in element_value:
+                        # if matches the condition, add all the epochs into rst
+                        for epoch in self.get_epochs(d):
                             rst.append((d, epoch))
         else:
             raise TypeError('You should input all of or none of\n' + 
-                            '`label_type` and `label_value`')
+                            '`element_name` and `element_value`')
         return rst
 
     def exclude_epochs(self, label_name = None, label_value = None):
