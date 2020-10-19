@@ -41,6 +41,31 @@ class Dataset(object):
                 label_dict = os.path.join(package_root, 'labeltemplate',
                                           'aasm.labeltemplate'),
                 mode = 'memory'):
+        '''
+        Create a new `Dataset()`
+
+        Parameters
+        ----------
+        dataset_name : str
+            The name of the dataset. It will be the filename if you save this
+            dataset.
+        save_path : str
+            Where you want to save this dataset.
+        comment : str, optional
+            A comment string to describe your dataset. The default is ''.
+        label_dict : str, optional
+            A dictionary to manage labels of dataset. It will translate human-
+            readable label to the style which fits machine learning. The
+            default is the AASM protocal.
+        mode : {'memory', 'disk'}, optional
+            For the faster speed, 'memory' mode will process all the data in
+            the memory. But if you have a huge dataset which exceeds or will
+            exhaust your memory, the 'disk' mode will cache all the data at
+            disk until you are to use them. It do slow down the computation,
+            but it is a good resolution when you are not able to extend your
+            memory. The default is 'memory'.
+
+        '''
         self.VERSION = 0.2
         self.path = save_path
         if self.path is not None and (dataset_name is not None):
