@@ -399,7 +399,8 @@ class Sample(object):
     def from_dataset(self, dataset, data_selection:dict=None,
                      mode:str='train'):
         '''
-        
+        Bind your sampling plan with a `Dataset`, which enables you begin to
+        sample, but also disallows you to change your sampling plan again.
 
         Parameters
         ----------
@@ -407,6 +408,7 @@ class Sample(object):
             A `Dataset` object. You should first create a `Dataset` from source
             or load a `Dataset` from disk, then input the `Dataset` as a
             parameter.
+
         data_selection : dict, optional
             The data or epochs you want to sample. The default is None which
             means use all the data or epochs.
@@ -417,8 +419,9 @@ class Sample(object):
             an element of label, and also `DIAGNOSE` as an element of
             condition. You just want to sample epochs whose `LABEL` is `1` or 
             '2' and `DIAGNOSE` is `'healthy'`, you can use:
-                data_selection = {'LABEL' : [1, 2].
-                                  'DIAGNOSE' : ['healthy']}
+            >>> data_selection = {'LABEL' : [1, 2].
+            ...                   'DIAGNOSE' : ['healthy']}
+
         mode : {'train', 'predict'}, optional
             Define the purpose why you sample. If you want to train a model,
             the sampled data will be balanced and split into train set and
