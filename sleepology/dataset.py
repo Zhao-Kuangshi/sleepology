@@ -1212,9 +1212,25 @@ class Dataset(object):
 
         Parameters
         ----------
-        elements : str or list
-            `element_name` or a list of them. Must be `label_name` or
-            `condition_type`.
+        elements : str, list or dict
+            `element_name` or a list of them. Also can be a dict with format:
+            >>> {element_name : [element_value, element_value]}
+            to add up specific classes.
+
+            For example, you want to add up classes whose `'LABEL'` is '1' or
+            '2', and `'DIAGNOSE'` is `'healthy'`. You can use:
+            >>> dataset.stat_classes(
+            ...    {'LABEL' : ['1', '2'],
+            ...     'DIAGNOSE' : 'healthy'})
+            
+            If you want to add up all the `'LABEL'` but just when `'DIAGNOSE'`
+            is `'healthy'`. You can use:
+            >>> dataset.stat_classes(
+            ...    {'LABEL' : [],  # an empty list means use all the values
+            ...     'DIAGNOSE' : 'healthy'})
+            Notice that an empty list means use all the values.
+
+            Elements must be `label_name` or `condition_type`.
 
         Raises
         ------
@@ -1233,6 +1249,8 @@ class Dataset(object):
             `(data_name, epoch)` tuples.
 
         '''
+        # check input
+        select = False  # to control whether to use selected elements or all
         unit_candidate = ['epoch', 'data']
         if unit is not None and unit not in unit_candidate:
             raise ValueError('Invalid unit. Only \'epoch\' or \'data\' allowd')
@@ -1240,10 +1258,15 @@ class Dataset(object):
             elements = [elements]
         elif isinstance(elements, list):
             pass
+        elif isinstance(elements, dict):
+            select = True
+            for key in elements:
+                if isinstance(elements[key], str):
+                    elements[key] = [elements[key]]
         else:
-            raise TypeError('The input parameter `elements` must be `str` or\n'
-                            '`list`. It represents label names or condition\n'
-                            'types.')
+            raise TypeError('The input parameter `elements` must be `str`, '
+                            '`list` or `dict`. It represents label names or '
+                            'condition types.')
 
         num = len(elements)  # numbers of elements
 
@@ -1270,10 +1293,17 @@ class Dataset(object):
                 unit = 'epoch'
 
         if unit == 'data':
-            for d in self.get_data():
+            for d in self.get_data():  # traversal and add up classes
+                fit = True
                 c = []
                 for cond in condition:
+                    if select and elements[cond] and self.get_condition(d, cond) \
+                        not in elements[cond]:  # encounter an invalid condition
+                        fit = False
+                        break  # drop this data
                     c.append(self.get_condition(d, cond))
+                if not fit:
+                    continue
                 c = tuple(c) if num > 1 else c[0]  # use tuple or single
                                                    # element
                 if c not in rst:
@@ -1282,11 +1312,22 @@ class Dataset(object):
         else:  # the unit is `epoch`
             for d in self.get_data():
                 for e in self.get_epochs(d):
+                    fit = True
                     c = []
                     for cond in condition:
+                        if select and elements[cond] and self.get_condition(d, \
+                            cond) not in elements[cond]:  # encounter an invalid condition
+                            fit = False
+                            break  # drop this epoch
                         c.append(self.get_condition(d, cond))
                     for l in label:
+                        if select and elements[l] and self.get_label(d, e, l) \
+                            not in elements[l]:  # encounter an invalid label
+                            fit = False
+                            break  # drop this data
                         c.append(self.get_label(d, e, l))
+                    if not fit:
+                        continue
                     c = tuple(c) if num > 1 else c[0]  # use tuple or single 
                                                        # element
                     if c not in rst:

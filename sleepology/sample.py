@@ -464,8 +464,10 @@ class Sample(object):
         self.dataset = dataset
         self.dataset.shape_check()
         if data_selection is None and self.get_unit() == 'epoch':
+            self.__selection = None
             self.data_selection = self.dataset.select_epochs()
         elif data_selection is None and self.get_unit() == 'data':
+            self.__selection = None
             self.data_selection = self.dataset.select_data()
         else:
             # data_selection has parameter in form of dict
@@ -473,13 +475,32 @@ class Sample(object):
             self.data_selection = set()
             if self.get_unit() == 'epoch':
                 for e in data_selection.keys():
-                    self.data_selection.intersection_update(
-                        self.dataset.select_epochs(e, data_selection[e]))
+                    if self.data_selection and len(data_selection[e]) != 0:
+                        self.data_selection.intersection_update(
+                            self.dataset.select_epochs(e, data_selection[e]))
+                    elif (not self.data_selection) and \
+                        len(data_selection[e]) != 0:
+                        self.data_selection = \
+                            self.dataset.select_epochs(e, data_selection[e])
+                    elif self.data_selection:
+                        pass
+                    else:
+                        self.data_selection = \
+                            self.dataset.select_epochs()
             else:
                 for e in data_selection.keys():
-                    self.data_selection.intersection_update(
-                        self.dataset.select_data(e, data_selection[e]))
-
+                    if self.data_selection and len(data_selection[e]) != 0:
+                        self.data_selection.intersection_update(
+                            self.dataset.select_data(e, data_selection[e]))
+                    elif (not self.data_selection) and \
+                        len(data_selection[e]) != 0:
+                        self.data_selection = \
+                            self.dataset.select_data(e, data_selection[e])
+                    elif self.data_selection:
+                        pass
+                    else:
+                        self.data_selection = \
+                            self.dataset.select_data()
         # set max_len
         if self.data_padding and self.max_len is None:
             epochs = self.dataset.epochs_per_data(self.data_list())
@@ -529,8 +550,11 @@ class Sample(object):
         Generate `Sample.classes`, which is a `dict` of different classes.
         '''
         logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
-        # TODO : delete classes which not being selected when using `from_dataset`
-        classes = self.dataset.stat_classes(self.get_y(), self.get_unit())
+        if self.__selection:
+            element = self.__selection
+        else:
+            element = self.get_y()
+        classes = self.dataset.stat_classes(element, self.get_unit())
         self.classes = {}
         for c in classes:
             self.classes[c] = [i for i in classes[c] 
