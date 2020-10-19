@@ -398,6 +398,44 @@ class Sample(object):
 
     def from_dataset(self, dataset, data_selection:dict=None,
                      mode:str='train'):
+        '''
+        
+
+        Parameters
+        ----------
+        dataset : sleepology.dataset.Dataset
+            A `Dataset` object. You should first create a `Dataset` from source
+            or load a `Dataset` from disk, then input the `Dataset` as a
+            parameter.
+        data_selection : dict, optional
+            The data or epochs you want to sample. The default is None which
+            means use all the data or epochs.
+            You should input a dict whose keys are `element_name` and values
+            are `element_value`.
+            For example, you have a `Dataset`, it will be sampled in unit of
+            epochs. And it has `PSG` as an element of feature, and `LABEL` as
+            an element of label, and also `DIAGNOSE` as an element of
+            condition. You just want to sample epochs whose `LABEL` is `1` or 
+            '2' and `DIAGNOSE` is `'healthy'`, you can use:
+                data_selection = {'LABEL' : [1, 2].
+                                  'DIAGNOSE' : ['healthy']}
+        mode : {'train', 'predict'}, optional
+            Define the purpose why you sample. If you want to train a model,
+            the sampled data will be balanced and split into train set and
+            test set. Else you want to use an existed model to predict new
+            data, the `Sample` process should not do any change to data, and it
+            will definitely no `Sample.y()` because the correct answer has not
+            provided. The default is 'train'.
+
+        Raises
+        ------
+        ValueError
+
+        Returns
+        -------
+        None.
+
+        '''
         # set mode
         try:
             if mode.lower() == 'train':
