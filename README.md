@@ -20,34 +20,38 @@ sleepology是一个使用Python开发的包，致力于开发一个可以管理�
 
 ## 内容目录
 
-- [sleepology](#sleepology)
-  * [内容目录](#----)
-  * [背景](#--)
-  * [安装](#--)
-  * [使用说明](#----)
-    + [了解数据集（Dataset）](#------dataset-)
-      - [导入Dataset类](#--dataset-)
-      - [创建数据集](#-----)
-      - [读取数据集](#-----)
-      - [保存数据集](#-----)
-    + [从源（Source）导入数据](#---source-----)
-      - [导入存储于磁盘的脑电数据](#------------)
-      - [帧（epoch）](#--epoch-)
-      - [导入来自日本光电机型的标签数据](#---------------)
-      - [把源（Source）添加到数据集（Dataset）](#---source--------dataset-)
-    + [特征、标签与条件](#--------)
-      - [条件（Condition）](#---condition-)
-      - [标签（Label）](#---label-)
-    + [预处理](#---)
-    + [数据探索](#----)
-      - [统计条件（Condition）](#-----condition-)
-      - [统计标签（Label）](#-----label-)
-      - [可视化](#---)
-    + [采样方案（Sample）](#-----sample-)
-      - [如果您希望使用一个RNN网络（GRU、LSTM等）](#---------rnn---gru-lstm--)
-  * [维护者](#---)
-  * [如何贡献](#----)
-  * [使用许可](#----)
+- [背景](#背景)
+- [安装](#安装)
+- [使用说明](#使用说明)
+	+ [了解数据集（Dataset）](#了解数据集（Dataset）)
+		- [导入Dataset类](#导入Dataset类)
+		- [创建数据集](#创建数据集)
+		- [读取数据集](#读取数据集)
+		- [保存数据集](#保存数据集)
+	+ [从源（Source）导入数据](#从源（Source）导入数据)
+		- [导入存储于磁盘的脑电数据](#导入存储于磁盘的脑电数据)
+		- [帧（epoch）](#帧（epoch）)
+		- [导入来自日本光电机型的标签数据](#导入来自日本光电机型的标签数据)
+		- [把源（Source）添加到数据集（Dataset）](#把源（Source）添加到数据集（Dataset）)
+	+ [特征、标签与条件](#特征、标签与条件)
+		- [条件（Condition）](#条件（Condition）)
+		- [标签（Label）](#标签（Label）)
+	+ [预处理](#预处理)
+	+ [数据探索](#数据探索)
+		- [统计条件（Condition）](#统计条件（Condition）)
+		- [统计标签（Label）](#统计标签（Label）)
+		- [可视化](#可视化)
+	+ [采样方案（Sample）](#采样方案（Sample）)
+		- [如果您希望使用一个RNN网络（GRU、LSTM等）](#如果您希望使用一个RNN网络（GRU、LSTM等）)
+		- [如果您希望使用自编码器（Auto Encoder）](#如果您希望使用自编码器（Auto Encoder）)
+		- [如果您不希望采用交叉验证](#如果您不希望采用交叉验证)
+		- [如果您是想要预测（predict）](#如果您是想要预测（predict）)
+		- [如果您需要训练整个数据](#如果您需要训练整个数据)
+		- [如果您打算使用集成学习](#如果您打算使用集成学习)
+		- [总结](#总结)
+- [维护者](#维护者)
+- [如何贡献](#如何贡献)
+- [使用许可](#使用许可)
 
 ## 背景
 
@@ -578,9 +582,212 @@ for i in range(10):
     history = model.fit(train, validation_data = test)
 ```
 
+**总结：**
+
+1. 创建一个`Sample()`对象，并指定你所希望的时间步（timestep）选取范围；
+2. 为`Sample`绑定数据集，使用`sample.from_dataset(dataset)`；
+3. 在k折交叉验证的情况下，每次必须使用`sample.next_fold()`来更新样本集；
+4. `sample.train_set()`和`sample.test_set()`是两个迭代器，直接可以生成类别平衡的、乱序的样本集。同时，迭代器的原理避免了一次性将所有样本读入内存，从而导致OOM的危机。
 
 
 
+
+
+#### 如果您希望使用自编码器（Auto Encoder）
+
+一般来说，`Sample`类并不允许将`feature`设为y。如果你使用：
+
+```python
+sample.set_y('FEATURE')
+```
+
+将会引起报错。这是用来防止您操作失误的。但是当您希望使用自编码器时，样本集的y一定就是x本身。所以需要首先告诉`Sample`您是希望用于自编码器。
+
+```python
+# 假设您的磁盘上有一个已经预处理完成的dataset文件。我们直接导入即可。
+from sleepology.dataset import Dataset
+from sleepology.sample import Sample
+
+# 导入数据集
+dataset = Dataset.load('example.dataset')
+
+# 新建一个采样方案
+sample = Sample(
+			 unit='epoch',  # 我们希望用每一个epoch的特征和标签进行训练，而不是用全部一整个数据的所有信息
+    		 tmin=-5,  # 我们希望在每个epoch采样时，同时采样它前面5个时间步（timestep）的信息
+    		 tmax=4,  # 我们希望在每个epoch采样时，同时采样它后面4个时间步（timestep）的信息
+    		 n_splits=10,  # 我们希望进行10折交叉验证
+    		 class_balance=True,  # 我们希望对不同类别的标签进行平衡
+    		 test_size=0.1,  # 我们希望每次抽样，都随机划分10%的数据用以验证
+    		 task='autoencoder'  # 通过设定任务为autoencoder，默认了Sample.x == Sample.y
+		)
+```
+
+通过最后一行设定`task='autoencoder'`，就可以把采样方案（Sample）设为自编码器的。
+
+```python
+# 设定模型的输入输出
+sample.set_x('FEATURE')  # 我们用'FEATURE'作为实验模型的输入
+
+# 至此，我们已经完成了采样方案的设定，希望利用该采样方案从dataset中采样
+sample.from_dataset(dataset)
+
+# 我们也可以保存这一种采样方案
+sample.save('score.sample')
+```
+
+
+
+#### 如果您不希望采用交叉验证
+
+在模型调参的初期，我们一般不使用交叉验证。因为连一批数据都跑不好，后面的训练都是在浪费时间。实际上只要把`n_split`设定为`1`，就默认不需要k折交叉验证。此时我们可以直接使用`Sample.train_set()`和`Sample.test_set()`来获取训练集和验证集，而无需再使用`Sample.next_fold()`函数。
+
+```python
+# 假设您的磁盘上有一个已经预处理完成的dataset文件。我们直接导入即可。
+from sleepology.dataset import Dataset
+from sleepology.sample import Sample
+
+# 导入数据集
+dataset = Dataset.load('example.dataset')
+
+# 新建一个采样方案
+sample = Sample(
+			 unit='epoch',  # 我们希望用每一个epoch的特征和标签进行训练，而不是用全部一整个数据的所有信息
+    		 tmin=-5,  # 我们希望在每个epoch采样时，同时采样它前面5个时间步（timestep）的信息
+    		 tmax=4,  # 我们希望在每个epoch采样时，同时采样它后面4个时间步（timestep）的信息
+    		 n_splits=1,  # 我们不进行交叉验证
+    		 class_balance=True,  # 我们希望对不同类别的标签进行平衡
+    		 test_size=0.1,  # 我们希望每次抽样，都随机划分10%的数据用以验证
+		)
+
+# 设定模型的输入输出
+sample.set_x('FEATURE')  # 我们用'FEATURE'作为实验模型的输入
+sample.set_y('LABEL')  # 我们用'LABEL'作为实验模型的输出
+
+# 至此，我们已经完成了采样方案的设定，希望利用该采样方案从dataset中采样
+sample.from_dataset(dataset)
+
+# 我们也可以保存这一种采样方案
+sample.save('score.sample')
+```
+
+
+
+#### 如果您是想要预测（predict）数据
+
+对于训练集来说，必然有输入模型的`x`和输出模型的`y`，也必然有训练集`train_set`和测试集`test_set`。而验证集不需要这些东西，也不可能存在这些东西。但是验证集却也需要和训练集具有相同的采样：比如有相同的时间步形式。所以还是需要用到先前构建的采样方案（Sample）。
+
+实际上，在设定完所有的采样方案（Sample）细节后（或者可以使用`Sample.load()`从磁盘导入之前设定的采样方案），在绑定数据集（Dataset）这一步：
+
+```python
+sample.from_dataset(dataset, mode='predict')  # 通过设定mode来设定要预测数据
+```
+
+通过设定mode来预测数据。
+
+
+
+一个`'predict'`模式的采样方案不要求有输出`y`，也不会进行类别平衡（无论你是否设定了`class_balance`），同样也不存在k折交叉验证或者测试集。所以我们数据的函数需要使用`Sample.sample()`。
+
+```python
+import tensorflow as tf
+
+# 省略建模过程
+...
+
+# 采样
+sample = tf.data.Dataset.from_generator(sample.sample, (tf.float32))
+model.predict(sample)
+```
+
+
+
+#### 如果您需要训练整个数据
+
+有时候，您希望利用整段数据的信息来进行学习。比方说利用一整晚的睡眠数据来诊断患者的疾病。这时候采样面临的最大问题是**不等长数据集**。您需要将数据集全部补充（pad）到同等长度才可以进行训练。但是内存又不足以把所有数据读入来进行补充（pad）。
+
+`sleepology.sample.Sample()`可以做到这一点。
+
+首先由于您是要读取整段数据集，所以`unit`不再是`'epoch'`而是`'data'`。当您设定`unit = 'data'`时，意味着您不能再使用标签（Label）作为模型的输出，而应该是条件（Condition）。因为标签（Label）是针对于帧（Epoch）的，整个数据没有标签（Label）。
+
+```python
+# 假设您的磁盘上有一个已经预处理完成的dataset文件。我们直接导入即可。
+from sleepology.dataset import Dataset
+from sleepology.sample import Sample
+
+# 导入数据集
+dataset = Dataset.load('example.dataset')
+
+# 新建一个采样方案
+sample = Sample(
+			 unit='data',  # 将单位设为data
+    		 tmin=-5,  # 我们希望在每个epoch采样时，同时采样它前面5个时间步（timestep）的信息
+    		 tmax=4,  # 我们希望在每个epoch采样时，同时采样它后面4个时间步（timestep）的信息
+    		 n_splits=1,  # 我们不进行交叉验证
+    		 class_balance=True,  # 我们希望对不同类别的标签进行平衡
+    		 data_padding=True, # 对data进行补充
+    		 test_size=0.1,  # 我们希望每次抽样，都随机划分10%的数据用以验证
+		)
+
+# 设定模型的输入输出
+sample.set_x('FEATURE')  # 我们用'FEATURE'作为实验模型的输入
+sample.set_y('diagnose')  # 我们用'diagnose'作为实验模型的输出
+
+# 至此，我们已经完成了采样方案的设定，希望利用该采样方案从dataset中采样
+sample.from_dataset(dataset)
+
+# 我们也可以保存这一种采样方案
+sample.save('score.sample')
+```
+
+这里我们使用了参数`class_balance=True`来补充是数据集，使它们具有相同的形状。
+
+
+
+#### 如果您打算使用集成学习
+
+集成学习是集成了多种学习方式的学习，我们这里假设是集成了两个神经网络。
+
+您当然可以使用同样的特征（Feature）输入两个不同的网络并集成它们，但是也很有可能您会使用不同的特征（Feature）。
+
+我们假设有一个数据集，同时存有了频域特征`'freq_feature'`和时域特征`'temp_feature'`。`sleepology.sample.Sample()`天然支持多特征的输入，您可以在设定模型输入时，以`list`形式传入两个特征。
+
+```python
+# 假设您的磁盘上有一个已经预处理完成的dataset文件。我们直接导入即可。
+from sleepology.dataset import Dataset
+from sleepology.sample import Sample
+
+# 导入数据集
+dataset = Dataset.load('example.dataset')
+
+# 新建一个采样方案
+sample = Sample(
+			 unit='epoch',  # 我们希望用每一个epoch的特征和标签进行训练，而不是用全部一整个数据的所有信息
+    		 tmin=-5,  # 我们希望在每个epoch采样时，同时采样它前面5个时间步（timestep）的信息
+    		 tmax=4,  # 我们希望在每个epoch采样时，同时采样它后面4个时间步（timestep）的信息
+    		 n_splits=1,  # 我们不进行交叉验证
+    		 class_balance=True,  # 我们希望对不同类别的标签进行平衡
+    		 test_size=0.1,  # 我们希望每次抽样，都随机划分10%的数据用以验证
+		)
+
+# 设定模型的输入输出
+sample.set_x(['freq_feature', 'temp_feature'])  # 以list形式传入两个特征，就可以为多输入模型提供输入
+sample.set_y('LABEL')  # 我们用'LABEL'作为实验模型的输出
+
+# 至此，我们已经完成了采样方案的设定，希望利用该采样方案从dataset中采样
+sample.from_dataset(dataset)
+
+# 我们也可以保存这一种采样方案
+sample.save('score.sample')
+```
+
+同样，如果您的模型由多个输出，比如多标签模型，也可以采用设定多个`y`的方式。类别平衡会自动以**多个标签的组合**进行平衡。
+
+
+
+#### 总结
+
+通过上面的几个样例，或许您已经可以体会到`sleepology`能够带来的作用。仅需要修改几个参数，就可以利用相同的数据集完成大量不同的机器学习任务，无需关心**非平衡数据集**、**不等长数据集**等带来的差异。
 
 
 

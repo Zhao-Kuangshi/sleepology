@@ -41,6 +41,31 @@ class Dataset(object):
                 label_dict = os.path.join(package_root, 'labeltemplate',
                                           'aasm.labeltemplate'),
                 mode = 'memory'):
+        '''
+        Create a new `Dataset()`
+
+        Parameters
+        ----------
+        dataset_name : str
+            The name of the dataset. It will be the filename if you save this
+            dataset.
+        save_path : path-like
+            Where you want to save this dataset.
+        comment : str, optional
+            A comment string to describe your dataset. The default is ''.
+        label_dict : path-like, optional
+            A dictionary to manage labels of dataset. It will translate human-
+            readable label to the style which fits machine learning. The
+            default is the AASM protocal.
+        mode : {'memory', 'disk'}, optional
+            For the faster speed, 'memory' mode will process all the data in
+            the memory. But if you have a huge dataset which exceeds or will
+            exhaust your memory, the 'disk' mode will cache all the data at
+            disk until you are to use them. It do slow down the computation,
+            but it is a good resolution when you are not able to extend your
+            memory. The default is 'memory'.
+
+        '''
         self.VERSION = 0.2
         self.path = save_path
         if self.path is not None and (dataset_name is not None):
@@ -501,14 +526,15 @@ class Dataset(object):
     def __df_del_epoch(self, disk_file, data_name, epoch):
         disk_file['dataset'][data_name]['data'].pop(str(epoch))
 
-    def select_epochs(self, label_name=None, label_value=None, data_name=None):
+    def select_epochs(self, element_name=None, element_value=None,
+                      data_name=None):
         # data_name
         if data_name is None:
             data_name = self.get_data()
         elif isinstance(data_name, str):
             data_name = [data_name]
         # label_name & label_value
-        if (label_name is None) and (label_value is None):
+        if element_name is None:
             rst = list()
             for d in data_name:
                 if self.__get_state(d) < Dataset.PREPROCESSED:
@@ -516,21 +542,27 @@ class Dataset(object):
                 logging.info(d)
                 for epoch in self.get_epochs(d):
                     rst.append((d, epoch))
-        elif label_name is not None and label_value is not None:
+        elif element_name is not None and element_value is not None:
             rst = list()
-            if not isinstance(label_value, list):
-                label_value = [label_value]
+            if not isinstance(element_value, list):
+                element_value = [element_value]
             for d in data_name:
                 if self.__get_state(d) == Dataset.ERROR:
                     continue
                 logging.info(d)
-                for epoch in self.get_epochs(d):
-                    for l in label_value:
-                        if self.get_label(d, epoch, label_name) == l:
+                if self.elements[element_name] == 'label':
+                    for epoch in self.get_epochs(d):
+                        if self.get_label(d, epoch, element_name) in \
+                            element_value:
+                            rst.append((d, epoch))
+                elif self.elements[element_name] == 'condition':
+                    if self.get_condition(d, element_name) in element_value:
+                        # if matches the condition, add all the epochs into rst
+                        for epoch in self.get_epochs(d):
                             rst.append((d, epoch))
         else:
             raise TypeError('You should input all of or none of\n' + 
-                            '`label_type` and `label_value`')
+                            '`element_name` and `element_value`')
         return rst
 
     def exclude_epochs(self, label_name = None, label_value = None):
@@ -1191,7 +1223,7 @@ class Dataset(object):
 
     ### SAMPLE ###
 
-    def stat_classes(self, elements):
+    def stat_classes(self, elements, unit=None):
         '''
         Add up different classes (or class group) according to input elements.
         Return a dict whose `keys()` are classes and `values()` are epochs for
@@ -1205,9 +1237,25 @@ class Dataset(object):
 
         Parameters
         ----------
-        elements : str or list
-            `element_name` or a list of them. Must be `label_name` or
-            `condition_type`.
+        elements : str, list or dict
+            `element_name` or a list of them. Also can be a dict with format:
+            >>> {element_name : [element_value, element_value]}
+            to add up specific classes.
+
+            For example, you want to add up classes whose `'LABEL'` is '1' or
+            '2', and `'DIAGNOSE'` is `'healthy'`. You can use:
+            >>> dataset.stat_classes(
+            ...    {'LABEL' : ['1', '2'],
+            ...     'DIAGNOSE' : 'healthy'})
+            
+            If you want to add up all the `'LABEL'` but just when `'DIAGNOSE'`
+            is `'healthy'`. You can use:
+            >>> dataset.stat_classes(
+            ...    {'LABEL' : [],  # an empty list means use all the values
+            ...     'DIAGNOSE' : 'healthy'})
+            Notice that an empty list means use all the values.
+
+            Elements must be `label_name` or `condition_type`.
 
         Raises
         ------
@@ -1226,15 +1274,24 @@ class Dataset(object):
             `(data_name, epoch)` tuples.
 
         '''
-        
+        # check input
+        select = False  # to control whether to use selected elements or all
+        unit_candidate = ['epoch', 'data']
+        if unit is not None and unit not in unit_candidate:
+            raise ValueError('Invalid unit. Only \'epoch\' or \'data\' allowd')
         if isinstance(elements, str):
             elements = [elements]
         elif isinstance(elements, list):
             pass
+        elif isinstance(elements, dict):
+            select = True
+            for key in elements:
+                if isinstance(elements[key], str):
+                    elements[key] = [elements[key]]
         else:
-            raise TypeError('The input parameter `elements` must be `str` or\n'
-                            '`list`. It represents label names or condition\n'
-                            'types.')
+            raise TypeError('The input parameter `elements` must be `str`, '
+                            '`list` or `dict`. It represents label names or '
+                            'condition types.')
 
         num = len(elements)  # numbers of elements
 
@@ -1254,11 +1311,24 @@ class Dataset(object):
                                  ' names or condition types.')
         # check passed
         rst = dict()
-        if len(label) == 0:  # the unit is `data`
-            for d in self.get_data():
+        if unit is None:
+            if len(label) == 0:
+                unit = 'data'
+            else:
+                unit = 'epoch'
+
+        if unit == 'data':
+            for d in self.get_data():  # traversal and add up classes
+                fit = True
                 c = []
                 for cond in condition:
+                    if select and elements[cond] and self.get_condition(d, cond) \
+                        not in elements[cond]:  # encounter an invalid condition
+                        fit = False
+                        break  # drop this data
                     c.append(self.get_condition(d, cond))
+                if not fit:
+                    continue
                 c = tuple(c) if num > 1 else c[0]  # use tuple or single
                                                    # element
                 if c not in rst:
@@ -1267,11 +1337,22 @@ class Dataset(object):
         else:  # the unit is `epoch`
             for d in self.get_data():
                 for e in self.get_epochs(d):
+                    fit = True
                     c = []
                     for cond in condition:
+                        if select and elements[cond] and self.get_condition(d, \
+                            cond) not in elements[cond]:  # encounter an invalid condition
+                            fit = False
+                            break  # drop this epoch
                         c.append(self.get_condition(d, cond))
                     for l in label:
+                        if select and elements[l] and self.get_label(d, e, l) \
+                            not in elements[l]:  # encounter an invalid label
+                            fit = False
+                            break  # drop this data
                         c.append(self.get_label(d, e, l))
+                    if not fit:
+                        continue
                     c = tuple(c) if num > 1 else c[0]  # use tuple or single 
                                                        # element
                     if c not in rst:
@@ -1352,93 +1433,6 @@ class Dataset(object):
                 y_samp = np.asarray(y_samp)
             return (x_samp, y_samp)
 
-    """
-    def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
-                               tmax=0, padding=False, array_type=int):
-        '''当返回None时，跳过这个epoch'''
-        # check state
-        if self.__get_state(data_name) < Dataset.PREPROCESSED:
-            raise DataStateError('You cannot sample from a data not correctly '
-                                 'preprocessed. The target data `' + data_name
-                                 + '` has a state `' 
-                                 + self.__get_state(data_name, True) + '`.')
-        # without timestep
-        if tmin == 0 and tmax == 0:
-            # feature
-            if self.elements[element_name] == 'feature':
-                return self.get_feature(data_name, epoch, element_name)
-            # label
-            elif self.elements[element_name] == 'label':
-                return self.get_label(data_name, epoch, element_name)
-        # with timestep
-        else:
-            # check timespan
-            # timespan cannot be longer than data_length
-            data_length = len(self.get_epochs(data_name))
-            logging.info('Data Length: ' + str(data_length))
-            assert tmax >= 0
-            assert abs(tmin) + tmax <= data_length
-            # sample
-            epoch_list = self.get_epochs(data_name)
-            # at the start of the series
-            if epoch_list[epoch] < epoch_list[abs(tmin)]:
-                if padding:  # pre-padding
-                    # feature
-                    if self.elements[element_name] == 'feature':
-                        r = np.array([np.zeros(self.shape[element_name])] \
-                                     * (abs(tmin) - epoch) 
-                            + [self.get_feature(data_name, i, element_name) \
-                               for i in epoch_list[: epoch + tmax + 1]])
-                    # label
-                    elif self.elements[element_name] == 'label':
-                        p = self.label_dict[element_name].get_array( \
-                                                None, array_type = array_type)
-                        r = np.array([p] * (abs(tmin) - epoch) 
-                            + [self.label_dict[element_name].get_array( \
-                            self.get_label(data_name,
-                                             epoch[i], element_name), \
-                                array_type = array_type) \
-                               for i in epoch_list[: epoch + tmax + 1]])
-                # if not padding, the epoch at edge will be disposed
-                else:
-                    raise BrokenTimestepError()
-            # at the end of the series
-            elif epoch_list[epoch] > epoch_list[data_length - tmax - 1]:
-                if padding:  # post-padding
-                    # feature
-                    if self.elements[element_name] == 'feature':
-                        r = np.array([self.get_feature(data_name,
-                                                         i, element_name) \
-                                      for i in epoch_list[epoch - abs(tmin) :]]
-                        + [np.zeros(self.shape[element_name])] \
-                            * (tmax + epoch + 1 - data_length))
-                    # label
-                    elif self.elements[element_name] == 'label':
-                        p = self.label_dict[element_name].get_array( \
-                                                None, array_type = array_type)
-                        r = np.array([self.label_dict[element_name].get_array(
-                                        self.get_label(data_name,
-                                                         i, element_name), \
-                                            array_type = array_type) \
-                                      for i in epoch_list[epoch - abs(tmin) :]]
-                        + [p] * (tmax + epoch + 1 - data_length))
-            else: # normal situation
-                # feature
-                if self.elements[element_name] == 'feature':
-                    r = np.array([self.get_feature(data_name, i,
-                                                     element_name) 
-                                  for i in epoch_list[epoch - abs(tmin) : \
-                                                      epoch + tmax + 1]])
-                # label
-                elif self.elements[element_name] == 'label':
-                    r = np.array([self.label_dict[element_name].get_array( \
-                            self.get_label(data_name, epoch[i], element_name),
-                            array_type = array_type)
-                            for i in epoch_list[epoch - abs(tmin) : \
-                                                      epoch + tmax + 1]])
-            return r
-    """
-
     def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
                                tmax=0, padding=False, array_type=int):
         '''当返回None时，跳过这个epoch'''
@@ -1458,7 +1452,9 @@ class Dataset(object):
                 return self.get_feature(data_name, epoch, element_name)
             # label
             elif self.elements[element_name] == 'label':
-                return self.get_label(data_name, epoch, element_name)
+                return self.label_dict[element_name].get_array( \
+                        self.get_label(data_name, epoch, element_name),
+                        array_type = array_type)
         # with timestep
         else:
             # check timespan
@@ -1683,6 +1679,28 @@ class Dataset(object):
 
     @staticmethod
     def load(path, mode = 'memory', load_source = False):
+        '''
+        Load the existed dataset from disk.
+
+        Parameters
+        ----------
+        path : path-like
+            The path to the dataset file.
+        mode : {'memory', 'disk'}, optional
+            For the faster speed, 'memory' mode will process all the data in
+            the memory. But if you have a huge dataset which exceeds or will
+            exhaust your memory, the 'disk' mode will cache all the data at
+            disk until you are to use them. It do slow down the computation,
+            but it is a good resolution when you are not able to extend your
+            memory. The default is 'memory'.
+        load_source : bool, optional
+            Whether to load the sources of dataset. The default is False.
+
+        Returns
+        -------
+        dataset : sleepology.dataset.Dataset
+
+        '''
         # 2020-3-1 hdf5->dict
         disk_file = h5py.File(path, 'r')
         # 获取属性
@@ -1709,9 +1727,3 @@ class Dataset(object):
         self.__df_save_label_dict_0_2(disk_file)
         self.__df_save_dataset_0_2(disk_file)
         disk_file.close()
-
-
-class IndexManager(object):
-    def __init__(self, *args):
-        self.idx = {}
-        
