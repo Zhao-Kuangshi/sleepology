@@ -49,11 +49,11 @@ class Dataset(object):
         dataset_name : str
             The name of the dataset. It will be the filename if you save this
             dataset.
-        save_path : str
+        save_path : path-like
             Where you want to save this dataset.
         comment : str, optional
             A comment string to describe your dataset. The default is ''.
-        label_dict : str, optional
+        label_dict : path-like, optional
             A dictionary to manage labels of dataset. It will translate human-
             readable label to the style which fits machine learning. The
             default is the AASM protocal.
@@ -1679,6 +1679,28 @@ class Dataset(object):
 
     @staticmethod
     def load(path, mode = 'memory', load_source = False):
+        '''
+        Load the existed dataset from disk.
+
+        Parameters
+        ----------
+        path : path-like
+            The path to the dataset file.
+        mode : {'memory', 'disk'}, optional
+            For the faster speed, 'memory' mode will process all the data in
+            the memory. But if you have a huge dataset which exceeds or will
+            exhaust your memory, the 'disk' mode will cache all the data at
+            disk until you are to use them. It do slow down the computation,
+            but it is a good resolution when you are not able to extend your
+            memory. The default is 'memory'.
+        load_source : bool, optional
+            Whether to load the sources of dataset. The default is False.
+
+        Returns
+        -------
+        dataset : sleepology.dataset.Dataset
+
+        '''
         # 2020-3-1 hdf5->dict
         disk_file = h5py.File(path, 'r')
         # 获取属性
