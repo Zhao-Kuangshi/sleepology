@@ -11,6 +11,7 @@ import math
 import numpy
 import pylsl
 import traceback
+from xml.etree import ElementTree
 
 mne.set_log_level('WARNING')
 
@@ -192,9 +193,11 @@ class TCPStream(BCISource):
     pass
 
 
-class NihonkohdenLabelSource(Source):
-    def __init__(self, path, source_type = None):
+class CSVSource(Source):
+    def __init__(self, path, col, sep = ',\s+', source_type = None):
         super().__init__(path, source_type)
+        self.col = col
+        self.sep = sep
 
     def get(self, number = None):
         '''
@@ -251,12 +254,117 @@ class NihonkohdenLabelSource(Source):
 
         '''
         del self.raw
-
+    
     def __load_data(self):
         with open(self.path, 'r') as f:
             label_raw = f.readlines()     
         self.raw = []
         for entry in label_raw:
-            self.raw.append(re.split('\\s+', entry)[-3]) 
+            entry = entry.strip()
+            self.raw.append(re.split(self.sep, entry)[self.col]) 
 
+class NihonkohdenLabelSource(CSVSource):
+    def __init__(self, path, source_type = None):
+        super().__init__(path, -3, '\\s+', source_type)
+
+class NsrrLabelSource(Source):
+    d = {'Wake|0' : 'W',
+        'Stage 1 sleep|1' : '1',
+        'Stage 2 sleep|2' : '2',
+        'Stage 3 sleep|3' : '3',
+        'Stage 4 sleep|4' : '4',
+        'REM sleep|5' : 'R',
+        'Movement|6' : 'M',
+        'Unscored|9' : 'U',
+        'Artifact|10' : 'A',
+        'Beginning of time in bed' : 'B',
+        'End of time in bed' : 'E',
+        'Beginning of analysis period' : 'BA',
+        'End of analysis period' : 'EA',
+        'SpO2 desaturation|SpO2 desaturation' : 'spo2desat',
+        'SpO2 artifact|SpO2 artifact' : 'spo2artifact',
+        'Hypopnea|Hypopnea' : 'hypopnea',
+        'Obstructive hypopnea|Obstructive Hypopnea' : 'obsthypopnea',
+        'Central hypopnea|Central Hypopnea' : 'centhypopnea',
+        'Mixed hypopnea|Mixed Hypopnea' : 'mixedhypopnea',
+        'Obstructive apnea|Obstructive Apnea' : 'obstapnea',
+        'Central apnea|Central Apnea' : 'centapnea',
+        'Mixed apnea|Mixed Apnea' : 'mixedapnea',
+        'Apnea|APNEA' :'apnea'
+    }
+    def __init__(self, path, label_type='Stages|Stages', source_type=None,
+                 epoch_length=30):
+        super().__init__(path, source_type)
+        self.label_type = label_type
+        self.epoch_length = epoch_length
+
+    def get(self, number = None):
+        '''
+        Get the label of one epoch. 
+        You can specify which epoch you want to get by setting parameter 
+        `number`.
+        When `number is None`, this method will sequentially return epochs 
+        until meet the end of data. Then function will raise a `StopIteration`
+        exception.
+
+        Parameters
+        ----------
+        number : int, optional
+            The serial number of the epoch. You can specify which epoch you 
+            want to get. The default is None, means sequentially return epochs 
+            until meet the end of data.
+
+        Raises
+        ------
+        StopIteration
+            Encounter the end of data. You may use `try ... except` structure 
+            to handle.
+
+        Returns
+        -------
+        number : int
+            The serial number of the epoch.
+        epoch : mne.epochs.Epochs
+
+        '''
+        if not hasattr(self, 'raw'):
+            self.__load_data()
+            self.number = 0
+        try:
+            if number is None:
+                number = self.number
+                self.number += 1
+            rst = self.raw[number]
+            if self.source_type == 'aasm':
+                rst = self.trans_aasm(rst)
+            return number, rst
+        except IndexError:
+            raise StopIteration
+
+    def trans_aasm(self, label):
+    # 2020-3-2 把标签中的4期睡眠全部转化为3期
+        if label == '4':
+            label = '3'
+        return label
+
+    def clean(self):
+        '''
+        Delete the data from memory.
+
+        '''
+        del self.raw
     
+    def __load_data(self):
+        label_raw = ElementTree.parse(self.path)
+        events = label_raw.findall('ScoredEvents/ScoredEvent')
+        self.raw = []
+        for entry in events:
+            if entry.find('EventType').text == self.label_type:
+                self.raw.extend(
+                    [NsrrLabelSource.d[entry.find('EventConcept').text]] *
+                    int(float(entry.find('Duration').text) / self.epoch_length)
+                    )
+
+
+
+  
