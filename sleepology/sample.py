@@ -905,7 +905,8 @@ class Sample(object):
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -915,7 +916,8 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -926,7 +928,8 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.test_y[idx][0],
                         test_epoch=self.test_y[idx][1],
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'data' and self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -937,7 +940,8 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.test_y[idx],
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
             except BrokenTimestepError:
                 continue
 

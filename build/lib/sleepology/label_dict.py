@@ -14,8 +14,11 @@ class LabelDict(object):
         if load_path is not None:
             self.load(load_path)
 
-    def shape(self):
-        return (self.length, )
+    def shape(self, N_hot=True):
+        if N_hot:
+            return (self.length, )
+        else:
+            return (1,)
 
     def labels(self):
         return list(self.label2array.keys())
@@ -50,7 +53,7 @@ class LabelDict(object):
             `str`.
             For example:
                 array_type=bool          (Correct)
-                array_type=\'bool\'      (Wrong)
+                array_type='bool'        (Wrong)
 
         Raises
         ------
@@ -66,7 +69,7 @@ class LabelDict(object):
         '''
         # if array_type is None, return a number directly
         if array_type is None:
-            if isinstance(label, Iterable):
+            if isinstance(label, list):
                 if len(label) != 1:
                     raise TypeError(
                         'make sure your request is single-label when'
@@ -77,7 +80,7 @@ class LabelDict(object):
                 return self.label2array[label]
         # return N-hot array
         else:
-            if isinstance(label, Iterable) and len(label) == 0:
+            if isinstance(label, list) and len(label) == 0:
                 raise TypeError('at least 1 label should be given.')
             if label is None:  # request padding
                 arr = np.asarray([False] * self.length)

@@ -33,6 +33,7 @@ class Sample(object):
         self.set_epoch_padding(epoch_padding)
         self.set_data_padding(data_padding)
         self.set_task(task)
+        self.array_type = int
 
     def set_unit(self, unit):
         '''
@@ -171,6 +172,39 @@ class Sample(object):
         else:
             self.task = task.lower()
 
+    def set_label_array_type(self, array_type):
+        '''
+        Set the type of one-hot or N-hot label array the sample will return.
+        If `array_type` is `None`, the function will return a number directly,
+        i.e., not in terms of one-hot or N-hot array.
+
+        Parameters
+        ----------
+        array_type : type or None, optional
+            The type of elements in return array. The default and most
+            recommended is int. You should input directly a `type`, not a
+            `str`.
+            For example:
+                array_type=bool          (Correct)
+                array_type='bool'        (Wrong)
+
+            If `array_type` is `None`, the function will return a number
+            directly, i.e., not in terms of one-hot or N-hot array.
+
+        Raises
+        ------
+        TypeError
+            Raised when you input an empty `label` parameter.
+
+        Returns
+        -------
+        int or np.ndarray
+            return `int` if array_type is None.
+            else return one-hot or N-hot `np.ndarray`. 
+
+        '''
+        self.array_type = array_type
+
     def set_x(self, x):
         # 不强求类型。可以是dataset的label甚至是condition(比如用很多condition来判断疾病(age, sex)→diagnose
         self.__check_editable()
@@ -226,7 +260,11 @@ class Sample(object):
                    ['x', str(self.get_x())],
                    ['y', str(self.get_y())],
                    ['Sample Mode', self.mode if hasattr(self, 'mode') else 
-                    'Not Set']]
+                    'Not Set'],
+                   ['label_array_type', '{0}: {1}'.format(
+                       'one-hot/N-hot' if self.array_type else 'numeric',
+                       self.array_type if self.array_type else 'int'
+                   )]]
         tp.banner('Your Sampling Settings')
         tp.table(content, headers)
 
@@ -799,7 +837,8 @@ class Sample(object):
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -809,7 +848,8 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -820,7 +860,8 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.train_y[idx][0],
                         test_epoch=self.train_y[idx][1],
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -831,7 +872,8 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.train_y[idx],
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
             except BrokenTimestepError:
                 continue
 
