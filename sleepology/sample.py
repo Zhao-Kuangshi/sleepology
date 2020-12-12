@@ -945,16 +945,51 @@ class Sample(object):
             except BrokenTimestepError:
                 continue
 
-    def one(self, generator=True):
+    def one(self, generator:bool=True):
         '''
         Sample only one data and its label in dataset. This one data will
         be repeatedly sampled and fed into the model. This method is designed
         for testing a model. If the model cannot fit just one sample, there
         maybe some problems with the model, such as gradient disappearance.
 
+        Parameters
+        ----------
+        generator : bool, optional
+            Determine the return type. If True, the returned object is a
+            generator, it is supported by tensorflow and memory-saving. If
+            False, the returned object is a np.ndarray, it is supported by
+            scikit-learn.
+            The default is True.
+
         Returns
         -------
-        None.
+        generator or np.ndarray
+
+        '''
+        if generator:
+            logging.info('Use generator')
+            return self.one_generator()
+        else:
+            logging.info('Do not use generator')
+            x_samp = []
+            y_samp = []
+            for x, y in self.one_generator():
+                x_samp.append(x)
+                y_samp.append(y)
+            x_samp = np.asarray(x_samp)
+            y_samp = np.asarray(y_samp)
+            return (x_samp, y_samp)
+
+    def one_generator(self):
+        '''
+        Sample only one data and its label in dataset. This one data will
+        be repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit just one sample, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Yields
+        ------
+        np.ndarray
 
         '''
         # the purpose of `Sample.one` is only to get one sample, regardless of
