@@ -1084,6 +1084,8 @@ class Sample(object):
         np.ndarray
 
         '''
+        if not hasattr(self, 'classes'):
+            self.subgroups()
         # the purpose of `Sample.one_per_class` is only to get samples,
         # regardless of whether the mode `train` or `test`, or whether the
         # dataset needs to cross validation or not.
