@@ -8,10 +8,10 @@ from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
     KFoldError, LackOfLabelDictError
 
 import json
+import random
 import logging
 import numpy as np
 import tableprint as tp
-from random import shuffle as sfl
 from sklearn.model_selection import ShuffleSplit
 
 def flatten(seq):
@@ -355,7 +355,7 @@ class Sample(object):
     def __check_iteration(self):
         '''
         In `train` mode, before use `Sample.train_set()` or `Sample.test_set()`
-        , one should first get one fold (or a subset for crossvalidation).
+        , we should get one fold first (or a subset for cross validation).
         Unless the cross validation is not needed (when `n_splits == 1`).
         
         If `n_splits != 1`, you should use `Sample.next_fold()` every iteration
@@ -754,16 +754,16 @@ class Sample(object):
         # finally
         if shuffle:
             logging.info('shuffle...')
-            sfl(train_set)
-            sfl(test_set)
+            random.shuffle(train_set)
+            random.shuffle(test_set)
         self.train = train_set
         self.test = test_set
         # disturb, which disturb the match of x and y, i.e. shuffle the y
         if disturb:
             train_set = train_set.copy()
             test_set = test_set.copy()
-            sfl(train_set)
-            sfl(test_set)
+            random.shuffle(train_set)
+            random.shuffle(test_set)
             self.train_y = train_set
             self.test_y = test_set
         logging.info('Length of `train_set` this fold: {0}'.format(
@@ -945,6 +945,66 @@ class Sample(object):
             except BrokenTimestepError:
                 continue
 
+    def one(self, generator=True):
+        '''
+        Sample only one data and its label in dataset. This one data will
+        be repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit just one sample, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Returns
+        -------
+        None.
+
+        '''
+        # the purpose of `Sample.one` is only to get one sample, regardless of
+        # whether the mode `train` or `test`, or whether the dataset needs to
+        # cross validation or not.
+        one = random.sample(self.data_selection, 1)
+        one = one * len(self.data_selection)
+        for idx, item in enumerate(one):
+            try:
+                if self.get_unit() == 'epoch':
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+                elif self.get_unit() == 'data':
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+            except BrokenTimestepError:
+                continue
+    
+    def one_per_class(self, generator=True):
+        '''
+        Sample only one data and its label per class. These data will be
+        repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit such small dataset, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Returns
+        -------
+        None.
+
+        '''
+        # to do ...
+        # 也只能在train模式下用
+        pass
+
     def sample(self):
         self.__check_mode('predict')
         pass
+    
