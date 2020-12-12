@@ -57,3 +57,10 @@ class KFoldError(Exception):
     Raised when iteration is not correctly set.
     '''
     pass
+
+
+class TaskError(Exception):
+    '''
+    Raised when operation ordered in an improper task.
+    '''
+    pass

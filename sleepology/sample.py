@@ -5,7 +5,7 @@ Created on Wed Aug 26 20:07:43 2020
 @author: 赵匡是
 """
 from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
-    KFoldError, LackOfLabelDictError
+    KFoldError, LackOfLabelDictError, TaskError
 
 import json
 import random
@@ -587,6 +587,12 @@ class Sample(object):
         Split data or epochs by classes into subgroups.
         Generate `Sample.classes`, which is a `dict` of different classes.
         '''
+                # this method only supports `classification` task, not `regression`
+        # task. Here we check it.
+        if self.task != 'classification':
+            raise TaskError('Only `classification` task has subgroups. Please '
+                            'check the returned table when doing '
+                            '`Sample.from_dataset`.')
         logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
         if self.__selection:
             element = self.__selection
@@ -1030,14 +1036,87 @@ class Sample(object):
         for testing a model. If the model cannot fit such small dataset, there
         maybe some problems with the model, such as gradient disappearance.
 
+        Parameters
+        ----------
+        generator : bool, optional
+            Determine the return type. If True, the returned object is a
+            generator, it is supported by tensorflow and memory-saving. If
+            False, the returned object is a np.ndarray, it is supported by
+            scikit-learn.
+            The default is True.
+
         Returns
         -------
-        None.
+        generator or np.ndarray
 
         '''
-        # to do ...
-        # 也只能在train模式下用
-        pass
+        # this method only supports `classification` task, not `regression`
+        # task. Here we check it.
+        if self.task != 'classification':
+            raise TaskError('Only `classification` task has classes. Please '
+                            'check the returned table when doing '
+                            '`Sample.from_dataset` if your task is '
+                            'classification, or use `Sample.one()` instead '
+                            'of `Sample.one_per_class()` in regression task,')
+        if generator:
+            logging.info('Use generator')
+            return self.one_per_class_generator()
+        else:
+            logging.info('Do not use generator')
+            x_samp = []
+            y_samp = []
+            for x, y in self.one_per_class_generator():
+                x_samp.append(x)
+                y_samp.append(y)
+            x_samp = np.asarray(x_samp)
+            y_samp = np.asarray(y_samp)
+            return (x_samp, y_samp)
+
+    def one_per_class_generator(self):
+        '''
+        Sample only one data and its label per class. These data will be
+        repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit such small dataset, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Yields
+        ------
+        np.ndarray
+
+        '''
+        # the purpose of `Sample.one_per_class` is only to get samples,
+        # regardless of whether the mode `train` or `test`, or whether the
+        # dataset needs to cross validation or not.
+        opc = [] # one_per_class
+        for k in self.classes.keys():
+            opc.extend(random.sample(self.classes[k], 1))
+        # the length of samples = data_length
+        opc = opc * (len(self.data_selection) / len(self.classes.keys()))
+        for idx, item in enumerate(opc):
+            try:
+                if self.get_unit() == 'epoch':
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+                elif self.get_unit() == 'data':
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+            except BrokenTimestepError:
+                continue
 
     def sample(self):
         self.__check_mode('predict')
