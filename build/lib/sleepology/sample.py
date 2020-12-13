@@ -5,13 +5,14 @@ Created on Wed Aug 26 20:07:43 2020
 @author: 赵匡是
 """
 from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
-    KFoldError, LackOfLabelDictError
+    KFoldError, LackOfLabelDictError, TaskError
 
+import math
 import json
+import random
 import logging
 import numpy as np
 import tableprint as tp
-from random import shuffle as sfl
 from sklearn.model_selection import ShuffleSplit
 
 def flatten(seq):
@@ -355,7 +356,7 @@ class Sample(object):
     def __check_iteration(self):
         '''
         In `train` mode, before use `Sample.train_set()` or `Sample.test_set()`
-        , one should first get one fold (or a subset for crossvalidation).
+        , we should get one fold first (or a subset for cross validation).
         Unless the cross validation is not needed (when `n_splits == 1`).
         
         If `n_splits != 1`, you should use `Sample.next_fold()` every iteration
@@ -587,6 +588,12 @@ class Sample(object):
         Split data or epochs by classes into subgroups.
         Generate `Sample.classes`, which is a `dict` of different classes.
         '''
+                # this method only supports `classification` task, not `regression`
+        # task. Here we check it.
+        if self.task != 'classification':
+            raise TaskError('Only `classification` task has subgroups. Please '
+                            'check the returned table when doing '
+                            '`Sample.from_dataset`.')
         logging.info('== DISCRIMINATE DIFFERENT CLASSES ==')
         if self.__selection:
             element = self.__selection
@@ -754,16 +761,16 @@ class Sample(object):
         # finally
         if shuffle:
             logging.info('shuffle...')
-            sfl(train_set)
-            sfl(test_set)
+            random.shuffle(train_set)
+            random.shuffle(test_set)
         self.train = train_set
         self.test = test_set
         # disturb, which disturb the match of x and y, i.e. shuffle the y
         if disturb:
             train_set = train_set.copy()
             test_set = test_set.copy()
-            sfl(train_set)
-            sfl(test_set)
+            random.shuffle(train_set)
+            random.shuffle(test_set)
             self.train_y = train_set
             self.test_y = test_set
         logging.info('Length of `train_set` this fold: {0}'.format(
@@ -905,7 +912,8 @@ class Sample(object):
                         tmin=self.get_tmin(),
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -915,7 +923,8 @@ class Sample(object):
                         data_padding=self.data_padding,
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -926,7 +935,8 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.test_y[idx][0],
                         test_epoch=self.test_y[idx][1],
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
                 elif self.get_unit() == 'data' and self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -937,10 +947,182 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.test_y[idx],
-                        autoencoder=self.__autoencoder)
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+            except BrokenTimestepError:
+                continue
+
+    def one(self, generator:bool=True):
+        '''
+        Sample only one data and its label in dataset. This one data will
+        be repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit just one sample, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Parameters
+        ----------
+        generator : bool, optional
+            Determine the return type. If True, the returned object is a
+            generator, it is supported by tensorflow and memory-saving. If
+            False, the returned object is a np.ndarray, it is supported by
+            scikit-learn.
+            The default is True.
+
+        Returns
+        -------
+        generator or np.ndarray
+
+        '''
+        if generator:
+            logging.info('Use generator')
+            return self.one_generator()
+        else:
+            logging.info('Do not use generator')
+            x_samp = []
+            y_samp = []
+            for x, y in self.one_generator():
+                x_samp.append(x)
+                y_samp.append(y)
+            x_samp = np.asarray(x_samp)
+            y_samp = np.asarray(y_samp)
+            return (x_samp, y_samp)
+
+    def one_generator(self):
+        '''
+        Sample only one data and its label in dataset. This one data will
+        be repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit just one sample, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Yields
+        ------
+        np.ndarray
+
+        '''
+        # the purpose of `Sample.one` is only to get one sample, regardless of
+        # whether the mode `train` or `test`, or whether the dataset needs to
+        # cross validation or not.
+        one = random.sample(self.data_selection, 1)
+        one = one * len(self.data_selection)
+        for idx, item in enumerate(one):
+            try:
+                if self.get_unit() == 'epoch':
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+                elif self.get_unit() == 'data':
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+            except BrokenTimestepError:
+                continue
+    
+    def one_per_class(self, generator=True):
+        '''
+        Sample only one data and its label per class. These data will be
+        repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit such small dataset, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Parameters
+        ----------
+        generator : bool, optional
+            Determine the return type. If True, the returned object is a
+            generator, it is supported by tensorflow and memory-saving. If
+            False, the returned object is a np.ndarray, it is supported by
+            scikit-learn.
+            The default is True.
+
+        Returns
+        -------
+        generator or np.ndarray
+
+        '''
+        # this method only supports `classification` task, not `regression`
+        # task. Here we check it.
+        if self.task != 'classification':
+            raise TaskError('Only `classification` task has classes. Please '
+                            'check the returned table when doing '
+                            '`Sample.from_dataset` if your task is '
+                            'classification, or use `Sample.one()` instead '
+                            'of `Sample.one_per_class()` in regression task,')
+        if generator:
+            logging.info('Use generator')
+            return self.one_per_class_generator()
+        else:
+            logging.info('Do not use generator')
+            x_samp = []
+            y_samp = []
+            for x, y in self.one_per_class_generator():
+                x_samp.append(x)
+                y_samp.append(y)
+            x_samp = np.asarray(x_samp)
+            y_samp = np.asarray(y_samp)
+            return (x_samp, y_samp)
+
+    def one_per_class_generator(self):
+        '''
+        Sample only one data and its label per class. These data will be
+        repeatedly sampled and fed into the model. This method is designed
+        for testing a model. If the model cannot fit such small dataset, there
+        maybe some problems with the model, such as gradient disappearance.
+
+        Yields
+        ------
+        np.ndarray
+
+        '''
+        if not hasattr(self, 'classes'):
+            self.subgroups()
+        # the purpose of `Sample.one_per_class` is only to get samples,
+        # regardless of whether the mode `train` or `test`, or whether the
+        # dataset needs to cross validation or not.
+        opc = [] # one_per_class
+        for k in self.classes.keys():
+            opc.extend(random.sample(self.classes[k], 1))
+        # the length of samples = data_length
+        opc = opc * math.floor(
+            len(self.data_selection) / len(self.classes.keys()))
+        for idx, item in enumerate(opc):
+            try:
+                if self.get_unit() == 'epoch':
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
+                elif self.get_unit() == 'data':
+                    yield self.dataset.sample_data(
+                        item,
+                        (self.get_x(), self.get_y()),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type)
             except BrokenTimestepError:
                 continue
 
     def sample(self):
         self.__check_mode('predict')
         pass
+    

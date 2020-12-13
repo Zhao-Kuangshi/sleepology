@@ -7,6 +7,7 @@ Created on Wed Aug 26 20:07:43 2020
 from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
     KFoldError, LackOfLabelDictError, TaskError
 
+import math
 import json
 import random
 import logging
@@ -1093,7 +1094,8 @@ class Sample(object):
         for k in self.classes.keys():
             opc.extend(random.sample(self.classes[k], 1))
         # the length of samples = data_length
-        opc = opc * (len(self.data_selection) / len(self.classes.keys()))
+        opc = opc * math.floor(
+            len(self.data_selection) / len(self.classes.keys()))
         for idx, item in enumerate(opc):
             try:
                 if self.get_unit() == 'epoch':
