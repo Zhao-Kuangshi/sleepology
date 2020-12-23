@@ -35,6 +35,7 @@ class Sample(object):
         self.set_data_padding(data_padding)
         self.set_task(task)
         self.array_type = int
+        self.concat = False
 
     def set_unit(self, unit):
         '''
@@ -173,7 +174,7 @@ class Sample(object):
         else:
             self.task = task.lower()
 
-    def set_label_array_type(self, array_type):
+    def set_label_array_type(self, array_type:type):
         '''
         Set the type of one-hot or N-hot label array the sample will return.
         If `array_type` is `None`, the function will return a number directly,
@@ -205,6 +206,30 @@ class Sample(object):
 
         '''
         self.array_type = array_type
+
+    def set_concat(self, concat:bool=True):
+        '''
+        Decide the output shape when tmin!=0 or tmax!=0, i.e., multiple time
+        steps are sampled.
+        If you have not set the `tmin` or `tmax`. You do not need to care about
+        this parameter.
+        The default is False, means the output will not concatenate time steps
+        (i.e. sampled epochs) but leave the output shape as
+                   `(time_step, channel[, feature-related])`
+        In this situation, every
+        time step occupies a unique matrix. It is suitable for RNN-related
+        models.
+        If `concat==True`, all the sampled epoches will concatenate by the
+        'time' axis. It results in continuous feature which is suitable for TCN
+        or other CNN-related models.
+
+        Parameters
+        ----------
+        concat : bool, optional
+            The default is True.
+
+        '''
+        self.concat = concat
 
     def set_x(self, x):
         # 不强求类型。可以是dataset的label甚至是condition(比如用很多condition来判断疾病(age, sex)→diagnose
@@ -845,7 +870,8 @@ class Sample(object):
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -856,7 +882,8 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -868,7 +895,8 @@ class Sample(object):
                         test_data_name=self.train_y[idx][0],
                         test_epoch=self.train_y[idx][1],
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -880,7 +908,8 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.train_y[idx],
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
             except BrokenTimestepError:
                 continue
 
@@ -913,7 +942,8 @@ class Sample(object):
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -924,7 +954,8 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -936,7 +967,8 @@ class Sample(object):
                         test_data_name=self.test_y[idx][0],
                         test_epoch=self.test_y[idx][1],
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'data' and self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -948,7 +980,8 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         test_data_name=self.test_y[idx],
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
             except BrokenTimestepError:
                 continue
 
@@ -1015,7 +1048,8 @@ class Sample(object):
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'data':
                     yield self.dataset.sample_data(
                         item,
@@ -1026,7 +1060,8 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
             except BrokenTimestepError:
                 continue
     
@@ -1107,7 +1142,8 @@ class Sample(object):
                         tmax=self.get_tmax(), 
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
                 elif self.get_unit() == 'data':
                     yield self.dataset.sample_data(
                         item,
@@ -1118,7 +1154,8 @@ class Sample(object):
                         max_len=self.max_len,
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
-                        array_type=self.array_type)
+                        array_type=self.array_type,
+                        concat=self.concat)
             except BrokenTimestepError:
                 continue
 

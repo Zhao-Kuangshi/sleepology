@@ -1,0 +1,13 @@
+Metadata-Version: 1.2
+Name: sleepology
+Version: 0.2.47
+Summary: A python package to manage, process and sample huge polysomnogram (PSG) datasets. And it offers functions for machine learning (ML), real-time sampling and closed-loop stimulation in the future. 
+Home-page: https://github.com/Zhao-Kuangshi/sleepology
+Author: Zhao-Kuangshi
+Author-email: contact@zhaokuangshi.cn
+Maintainer: Zhao-Kuangshi
+Maintainer-email: contact@zhaokuangshi.cn
+License: GPL-3.0 License
+Description: UNKNOWN
+Platform: UNKNOWN
+Requires-Python: >=3.5

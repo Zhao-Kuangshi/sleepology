@@ -1362,7 +1362,7 @@ class Dataset(object):
 
     def sample_data(self, data_name, lst, tmin=0, tmax=0, data_padding=True,
                     max_len=None, epoch_padding=False, test_data_name=None,
-                    autoencoder=False, array_type=int):
+                    autoencoder=False, array_type=int, concat:bool=False):
         if test_data_name is None:
             test_data_name = data_name
 
@@ -1373,7 +1373,9 @@ class Dataset(object):
         for i in x:
             x_samp.append(self.sample_serial_x(data_name, i, tmin, tmax,
                                                data_padding, max_len,
-                                               epoch_padding))
+                                               epoch_padding,
+                                               array_type=array_type,
+                                               concat=concat))
         if len(x_samp) == 1:
             x_samp = x_samp[0]
         else:
@@ -1400,7 +1402,7 @@ class Dataset(object):
 
     def sample_epoch(self, data_name, epoch, lst, tmin=0, tmax=0,
                     epoch_padding=False, test_data_name=None, test_epoch=None,
-                    autoencoder=False, array_type=int):
+                    autoencoder=False, array_type=int, concat:bool=False):
         if test_data_name is None:
             test_data_name = data_name
             test_epoch = epoch
@@ -1412,7 +1414,8 @@ class Dataset(object):
         for i in x:
             x_samp.append(self.sample_epoched_x(data_name, epoch, i,
                                                 tmin, tmax, epoch_padding,
-                                                array_type=array_type))
+                                                array_type=array_type,
+                                                concat=concat))
         if len(x_samp) == 1:
             x_samp = x_samp[0]
         else:
@@ -1603,7 +1606,8 @@ class Dataset(object):
                              'act as `epoched_y` sample.')
     
     def sample_serial_x(self, data_name, element_name, tmin, tmax,
-                        data_padding, max_len, epoch_padding, array_type=int):
+                        data_padding, max_len, epoch_padding, array_type=int,
+                        concat:bool=False):
         timespan = abs(tmin) + tmax + 1
         rst = []
         for epoch in self.get_epochs(data_name):
@@ -1611,7 +1615,8 @@ class Dataset(object):
                 rst.append(self.sample_epoched_x(data_name, epoch, 
                                                  element_name,
                                                  tmin, tmax, epoch_padding,
-                                                 array_type=array_type))
+                                                 array_type=array_type,
+                                                 concat=concat))
             except BrokenTimestepError:
                 continue
         if data_padding:
