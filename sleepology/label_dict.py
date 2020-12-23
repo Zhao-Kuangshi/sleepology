@@ -86,6 +86,8 @@ class LabelDict(object):
                 arr = np.asarray([False] * self.length)
                 return arr.astype(array_type)
             else:
+                if isinstance(label, str):
+                    label = [label]
                 arr = np.asarray([False] * self.length)
                 for l in label:
                     arr[self.label2array[l]] = True

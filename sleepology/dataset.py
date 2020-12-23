@@ -1438,6 +1438,7 @@ class Dataset(object):
     def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
                                tmax=0, padding=False, array_type=int):
         '''当返回None时，跳过这个epoch'''
+        logging.info('== EPOCHED SAMPLE ==')
         # check state
         if self.__get_state(data_name) < Dataset.PREPROCESSED:
             raise DataStateError('You cannot sample from a data not correctly '
