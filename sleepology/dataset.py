@@ -1435,9 +1435,75 @@ class Dataset(object):
                 y_samp = np.asarray(y_samp)
             return (x_samp, y_samp)
 
-    def sample_epoched_x(self, data_name, epoch, element_name, tmin=0,
-                               tmax=0, padding=False, array_type=int):
-        '''当返回None时，跳过这个epoch'''
+    def sample_epoched_x(self, data_name:str, epoch:int, element_name:str,
+                         tmin:int=0, tmax:int=0, padding:bool=False,
+                         array_type:type=int, concat:bool=False):
+        '''
+        A low-level method to sample one epoch according to parameters.
+
+        Parameters
+        ----------
+        data_name : str
+            The target datum.
+        epoch : int
+            The target epoch.
+        element_name : str
+            The target element, it may be a feature_name, a label_name or a
+            condition_name.
+        tmin : int, optional
+            The number of preceding epochs before the target epoch to be
+            sampled. Usually used for RNN-related model or other models related
+            to time series. The default is 0, means do not sample any other
+            epochs.
+        tmax : int, optional
+            The number of following epochs after the target epoch to be
+            sampled. Usually used for RNN-related model or other models related
+            to time series. The default is 0, means do not sample any other
+            epochs.
+        padding : bool, optional
+            At the beginning or end of the datum, whether the target epoch to
+            be padded with zero or dropped. If True, they will be padded, 
+            otherwise dropped. The default is False.
+        array_type : type or None, optional
+            The type of elements in return array. The default and most
+            recommended is int. You should input directly a `type`, not a
+            `str`.
+            For example:
+                array_type=bool          (Correct)
+                array_type='bool'        (Wrong)
+
+        concat : bool, optional
+            Decide the output shape when tmin!=0 or tmax!=0, i.e., multiple
+            time steps are sampled.
+            If you have not set the `tmin` or `tmax`. You do not need to care
+            about this parameter.
+            The default is False, means the output will not concatenate time
+            steps (i.e. sampled epochs) but leave the output shape as
+            `(time_step, channel[, feature-related])`. In this situation, every
+            time step occupies a unique matrix. It is suitable for RNN-related
+            models.
+            If `concat==True`, all the sampled epoches will concatenate by the
+            'time' axis. It results in continuous feature which is suitable for
+            TCN or other CNN-related models.
+
+        Raises
+        ------
+        DataStateError
+            Raised when your data have not preprocessed yet. Check your data
+            state.
+        BrokenTimestepError
+            The flag of the end of one datum. It is for the iterators. You need
+            not do any treatment about it.
+        ValueError
+            The shape mismatch.
+
+        Returns
+        -------
+        np.ndarray
+            The sampled x.
+
+        '''
+        # Skip this epoch if returns `None`
         logging.info('== EPOCHED SAMPLE ==')
         # check state
         if self.__get_state(data_name) < Dataset.PREPROCESSED:
@@ -1448,17 +1514,17 @@ class Dataset(object):
                                                            data_name, True)))
         logging.debug('Data_name: {0}'.format(data_name))
         logging.debug('Epoch: {0}'.format(str(epoch)))
-        # without timestep
+        # ===== without timestep =====
         if tmin == 0 and tmax == 0:
-            # feature
+            # == feature ==
             if self.elements[element_name] == 'feature':
                 return self.get_feature(data_name, epoch, element_name)
-            # label
+            # == label ==
             elif self.elements[element_name] == 'label':
                 return self.label_dict[element_name].get_array( \
                         self.get_label(data_name, epoch, element_name),
                         array_type=array_type)
-        # with timestep
+        # ===== with timestep =====
         else:
             # check timespan
             # timespan cannot be longer than data_length
@@ -1476,13 +1542,13 @@ class Dataset(object):
             # so check if `idx - abs(tmin) < 0`
             lower = idx - abs(tmin) if idx - abs(tmin) >= 0 else 0
             upper = idx + tmax + 1
-            # feature
+            # == feature ==
             if self.elements[element_name] == 'feature':
                 dtype = 'float32'
                 sample_shape = self.shape[element_name]
                 r = np.asarray([self.get_feature(data_name, i, element_name) 
                               for i in epoch_list[lower : upper]])
-            # label
+            # == label ==
             elif self.elements[element_name] == 'label':
                 dtype = 'int32'
                 sample_shape = self.label_dict[element_name].shape()
@@ -1507,6 +1573,10 @@ class Dataset(object):
                     elif idx - abs(tmin) < 0:
                         x[-len(trunc):] = trunc
                     r = x
+            # == concat ==
+            # Only when `x` is a feature, the concat is needed.
+            if concat and self.elements[element_name] == 'feature':
+                r = np.concatenate(r)
             logging.debug(r.shape)
             return r
 
