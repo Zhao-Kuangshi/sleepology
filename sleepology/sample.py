@@ -22,7 +22,7 @@ class Sample(object):
     def __init__(self, unit='epoch', tmin=0, tmax=0, n_splits=10,
                  test_size=0.1, class_balance=True, data_balance=False,
                  epoch_padding=False, data_padding=None,
-                 task='classification'):
+                 task='classification', concat=False):
         self.__editable = True
         self.__autoencoder = False
         self.set_unit(unit)
@@ -35,7 +35,7 @@ class Sample(object):
         self.set_data_padding(data_padding)
         self.set_task(task)
         self.array_type = int
-        self.concat = False
+        self.concat = concat
 
     def set_unit(self, unit):
         '''
