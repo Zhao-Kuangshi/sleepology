@@ -606,8 +606,8 @@ class Sample(object):
             del self.train
         if hasattr(self, 'test'):
             del self.test
-        if hasattr(self, 'one'):
-            del self.one
+        if hasattr(self, 'onesamp'):
+            del self.onesamp
         if hasattr(self, 'opc'):  # one per class
             del self.opc
 
@@ -1045,9 +1045,9 @@ class Sample(object):
         # the purpose of `Sample.one` is only to get one sample, regardless of
         # whether the mode `train` or `test`, or whether the dataset needs to
         # cross validation or not.
-        if not hasattr(self, 'one'):
-            one = random.sample(self.data_selection, 1)
-            self.one = one * len(self.data_selection)
+        if not hasattr(self, 'onesamp'):
+            onesamp = random.sample(self.data_selection, 1)
+            self.onesamp = onesamp * len(self.data_selection)
         for idx, item in enumerate(self.one):
             try:
                 if self.get_unit() == 'epoch':
