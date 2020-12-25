@@ -1048,7 +1048,7 @@ class Sample(object):
         if not hasattr(self, 'onesamp'):
             onesamp = random.sample(self.data_selection, 1)
             self.onesamp = onesamp * len(self.data_selection)
-        for idx, item in enumerate(self.one):
+        for idx, item in enumerate(self.onesamp):
             try:
                 if self.get_unit() == 'epoch':
                     yield self.dataset.sample_epoch(
