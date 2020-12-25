@@ -601,6 +601,16 @@ class Sample(object):
         Initialize all the steps before sampling, including padding and
         spliting the train_set and test_set.
         '''
+        logging.debug('== CLEANING VARIABLES ==')
+        if hasattr(self, 'train'):
+            del self.train
+        if hasattr(self, 'test'):
+            del self.test
+        if hasattr(self, 'one'):
+            del self.one
+        if hasattr(self, 'opc'):  # one per class
+            del self.opc
+
         logging.info('== INITIALIZING SAMPLING ==')
         if self.task == 'classification':
             self.subgroups()
@@ -1035,9 +1045,10 @@ class Sample(object):
         # the purpose of `Sample.one` is only to get one sample, regardless of
         # whether the mode `train` or `test`, or whether the dataset needs to
         # cross validation or not.
-        one = random.sample(self.data_selection, 1)
-        one = one * len(self.data_selection)
-        for idx, item in enumerate(one):
+        if not hasattr(self, 'one'):
+            one = random.sample(self.data_selection, 1)
+            self.one = one * len(self.data_selection)
+        for idx, item in enumerate(self.one):
             try:
                 if self.get_unit() == 'epoch':
                     yield self.dataset.sample_epoch(
@@ -1120,17 +1131,18 @@ class Sample(object):
         np.ndarray
 
         '''
-        if not hasattr(self, 'classes'):
-            self.subgroups()
-        # the purpose of `Sample.one_per_class` is only to get samples,
-        # regardless of whether the mode `train` or `test`, or whether the
-        # dataset needs to cross validation or not.
-        opc = [] # one_per_class
-        for k in self.classes.keys():
-            opc.extend(random.sample(self.classes[k], 1))
-        # the length of samples = data_length
-        opc = opc * math.floor(
-            len(self.data_selection) / len(self.classes.keys()))
+        if not hasattr(self, 'opc'):
+            if not hasattr(self, 'classes'):
+                self.subgroups()
+            # the purpose of `Sample.one_per_class` is only to get samples,
+            # regardless of whether the mode `train` or `test`, or whether the
+            # dataset needs to cross validation or not.
+            opc = [] # one_per_class
+            for k in self.classes.keys():
+                opc.extend(random.sample(self.classes[k], 1))
+            # the length of samples = data_length
+            self.opc = opc * math.floor(
+                len(self.data_selection) / len(self.classes.keys()))
         for idx, item in enumerate(opc):
             try:
                 if self.get_unit() == 'epoch':
