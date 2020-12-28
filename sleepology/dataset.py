@@ -1506,6 +1506,7 @@ class Dataset(object):
             The sampled x.
 
         '''
+        TIMEAXIS = 1  # set the time axis
         # Skip this epoch if returns `None`
         logging.info('== EPOCHED SAMPLE ==')
         # check state
@@ -1579,7 +1580,7 @@ class Dataset(object):
             # == concat ==
             # Only when `x` is a feature, the concat is needed.
             if concat and self.elements[element_name] == 'feature':
-                r = np.concatenate(r)
+                r = np.concatenate(r, axis=TIMEAXIS)
             logging.debug(r.shape)
             return r
 
