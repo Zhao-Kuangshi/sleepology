@@ -1,15 +1,26 @@
 # -*- coding: utf-8 -*-
 import json
 import numpy as np
-from typing import List, Tuple, Dict, Union
+from typing import List, Tuple, Dict, Union, Sequence
 
 
 class LabelDict(object):
-    #  2020-3-2 标签字典
+    # Annote the types of labels and values
+    LabelType = Union[int,
+                      float,
+                      str,
+                      Tuple[int, int],
+                      Tuple[float, float],
+                      List[str]]
+    ValueType = Union[int,
+                      List[int],
+                      List[bool],
+                      float]
+
     def __init__(self, content=None):
         # 2020-3-2 array存的是数字
         self.dict = {}
-        self.key_type = None
+        self.label_type = None
         self.value_type = None
         
         self.length = 0 # 2020-3-2 提供当前字典的长度信息，也是one_hot数组的长度参考
@@ -42,19 +53,19 @@ class LabelDict(object):
         return list(self.label2array.keys())
 
     def add_label(self,
-                  label: Union[int, float, str, Tuple[int, float],
-                               List[str], Dict],
-                  value: Union[int, List[int, bool], float, None]=None) ->None:
+                  label: Union[LabelType, Dict[LabelType, ValueType]],
+                  value: Union[ValueType, None] = None) -> None:
         # There are three ways to add labels into `LabelDict`:
         # 1. you can input a `dict` with labels as keys and values as values;
         # 2. you can input only a label if you want to generate a value
         # automatically;
         # 3. you can input a label and a value so that you can define the value
         # of new label.
-        # todo: 写输入dict的情况 &&&&& 补充key的类型检查
+        # TODO : 写输入dict的情况 &&&&& 补充key的类型检查
         
         # === label ===
-        
+        if isinstance(label, dict):
+            # check if the label type accord with the previous label
         # === value ===
         if value is None:  # no value input
             # check if other values are int
@@ -96,14 +107,52 @@ class LabelDict(object):
     def __add_label_by_label_and_value(self, l, v):
         pass
     
-    def __label_check(self, label: Union[int, float, str, Tuple[int, float],
-                                         List[int, float, str,
-                                              Tuple[int, float]]]) -> None:
-        pass
+    def __label_check(self, label: LabelType) -> None:
+        '''
+        Check if the type of the new label accords with the previous.
+
+        Parameters
+        ----------
+        label : LabelType
+            The label to be checked.
+
+        Raises
+        ------
+        TypeError
+            Raised when the new label does not accord with the previous.
+
+        '''
+        if self.label_type is None:  # the first label to add
+            self.label_type = type(label)
+        elif self.label_type == type(label):
+            return None
+        else:
+            raise TypeError('the type of the new label `{0}` does not accord '
+                            'with previous labels whose type is `{1}`'.format(
+                                type(label), self.label_type))
 
     def __value_check(self, value) -> None:
-        pass
-    
+        # when the value is a sequence
+        if isinstance(value, list):
+            # check if the sequence is one-hot
+            if not self.__is_one_hot(value):
+                raise ValueError('you must add a one-hot array to the '
+                                 'LabelDict')
+            # and then translate sequential array into a number
+            value = np.argmax(value)
+        if self.value_type is None:  # the first value to add
+            self.value_type = type(value)
+        elif self.value_type == type(value):
+            return None
+        else:
+            raise TypeError('the type of the new value `{0}` does not accord '
+                            'with previous values whose type is `{1}`'.format(
+                                type(value), self.value_type))
+            
+
+    def __is_one_hot(self, array: Sequence) -> bool:
+        return sum([bool(i) for i in array]) != 1
+
     def get_array(self, label, array_type = int):
         '''
         Get one-hot or N-hot array according to given label. If `array_type` is
