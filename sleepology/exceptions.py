@@ -64,3 +64,9 @@ class TaskError(Exception):
     Raised when operation ordered in an improper task.
     '''
     pass
+
+class LabelValueConflictError(Exception):
+    '''
+    Raised when a value represent more than one labels.
+    '''
+    pass

@@ -5,6 +5,7 @@ Created on Thu Aug 13 19:02:45 2020
 @author: 赵匡是
 """
 
+from typing import Sequence, Dict
 from __future__ import print_function
 from sys import getsizeof, stderr
 from itertools import chain
@@ -14,15 +15,15 @@ try:
 except ImportError:
     pass
 
-def total_size(o, handlers={}, verbose=False):
-    """
+def total_size(o, handlers:Dict = {}, verbose:bool = False):
+    '''
     Returns the approximate memory footprint an object and all of its contents.
     Automatically finds the contents of the following builtin containers and
     their subclasses:  tuple, list, deque, dict, set and frozenset.
     To search other containers, add handlers to iterate over their contents:
         handlers = {SomeContainerClass: iter,
                     OtherContainerClass: OtherContainerClass.get_elements}
-    """
+    '''
     dict_handler = lambda d: chain.from_iterable(d.items())
     all_handlers = {tuple: iter,
                     list: iter,
@@ -51,3 +52,24 @@ def total_size(o, handlers={}, verbose=False):
         return s
 
     return sizeof(o)
+
+def is_one_hot(array: Sequence) -> bool:
+    '''
+    Check if an array is a one-hot array.
+
+    Parameters
+    ----------
+    array : Sequence
+        The array to be checked..
+
+    '''
+    return sum([bool(i) for i in array]) == 1
+
+def argmax(array: Sequence) -> int:
+    idx = 0
+    m = array[0]
+    for i, v in enumerate(array):
+        if v > m:
+            idx = i
+            m = v
+    return idx
