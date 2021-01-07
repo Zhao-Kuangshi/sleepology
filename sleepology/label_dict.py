@@ -33,7 +33,8 @@ class ClassDict(object):
                       str,
                       Tuple[int, int],
                       Tuple[float, float],
-                      List[str]]
+                      List[str],
+                      List[int]]
     ValueType = Union[int,
                       List[int],
                       List[bool],
@@ -44,10 +45,11 @@ class ClassDict(object):
         self.label_type = None
         self.value_type = int
         self.length = 0 # 2020-3-2 提供当前字典的长度信息，也是one_hot数组的长度参考
-        if len(content) == 1 and os.path.exists(content[0]):
+        if len(content) == 1 and isinstance(content[0], str) and \
+            os.path.exists(content[0]):
             self.load(content[0])
         elif len(content) > 0:
-            self.add(content)
+            self.add(*content)
 
     def shape(self, N_hot=True):
         if N_hot:
@@ -61,22 +63,24 @@ class ClassDict(object):
     def add(self, *content):
         if len(content) == 1 and isinstance(content[0], dict):
             self.add_by_dict(content[0])
+        elif len(content) == 1 and isinstance(content[0], list):
+            for l in content[0]:
+                self.add_by_label(l)
         elif len(content) == 1:
             self.add_by_label(content[0])
         elif len(content) == 2:
             self.add_by_label(content[0], content[1])
+        elif len(content) == 0:
+            raise TypeError('you must give some parameters.')
+        else:
+            raise TypeError('too much parameters.')
 
     def add_by_dict(self, d: Dict) -> None:
         # check keys
         for k in d:
-            self.__label_check(k)
-            d[k] = self.__value_check(d[k])
-        self.dict.update(d)
-        for k in d:
-            self.reverse_add(d[k], k)
+            self.add_by_label(k, d[k])
 
-    # TODO: todo
-    def add_by_label(self, label, value = None) -> None:
+    def add_by_label(self, label: LabelType, value: ValueType = None) -> None:
         # 2020-3-2
         if value is None and len(self.dict) > 0:
             value = max(list(self.dict.values())) + 1
@@ -87,7 +91,24 @@ class ClassDict(object):
         self.dict[label] = value
         self.reverse_add(value, label)
         self.length += 1
-    
+
+    def trans(self, label: LabelType):
+        if self.length <= 2:
+            return self.get_number(label)
+        else:
+            return self.get_array(label)
+
+    def get_value(self, label):
+        if isinstance(label, list):
+            if len(label) != 1:
+                raise TypeError(
+                    'make sure your request is single-label when array_type is'
+                    ' None.')
+        elif label is None:  # request padding
+            return -1  # `-1` represents padding
+        else:
+            return self.dict[label]
+
     def get_array(self, label, array_type = int):
         '''
         Get one-hot or N-hot array according to given label. If `array_type` is
@@ -125,15 +146,7 @@ class ClassDict(object):
         '''
         # if array_type is None, return a number directly
         if array_type is None:
-            if isinstance(label, list):
-                if len(label) != 1:
-                    raise TypeError(
-                        'make sure your request is single-label when'
-                        ' array_type is None.')
-            elif label is None:  # request padding
-                return -1  # `-1` represents padding
-            else:
-                return self.dict[label]
+            self.get_number(label)
         # return N-hot array
         else:
             if isinstance(label, list) and len(label) == 0:
@@ -197,12 +210,16 @@ class ClassDict(object):
     def reverse_set_primary(self, key: ValueType, primary: LabelType) -> None:
         if key in self.reverse_dict:
             if self.reverse_dict[key]['primary'] != primary:
-                if primary in self.reverse_dict[key]['alias']:
+                if 'alias' in self.reverse_dict[key] and \
+                    primary in self.reverse_dict[key]['alias']:
                     self.reverse_dict[key]['alias'].remove(primary)
+                else:
+                    self.reverse_dict[key]['alias'] = []
                 self.reverse_dict[key]['alias'].extend(
-                    self.reverse_dict[key]['primary'])
+                        self.reverse_dict[key]['primary'])
                 self.reverse_dict[key]['primary'] = primary
-                    
+        else:
+            self.reverse_add(key, primary)
             
 
     def __label_check(self, label: LabelType) -> LabelType:
@@ -225,12 +242,13 @@ class ClassDict(object):
         '''
         if self.label_type is None:  # the first label to add
             self.label_type = type(label)
+            return label
         elif self.label_type == type(label) and label not in self.dict:
             return label
         elif self.label_type == type(label) and label in self.dict:
             raise ValueError(f'the label `{label}` has already existed in the '
                              'LabelDict. If you want to modify the value of '
-                             '{label}, please use `LabelDict.modify()`.')
+                             f'{label}, please use `LabelDict.modify()`.')
         else:
             raise TypeError('the type of the new label `{0}` does not accord '
                             'with previous labels whose type is `{1}`'.format(
@@ -257,13 +275,14 @@ class ClassDict(object):
         # when the value is a sequence
         if isinstance(value, list):
             # check if the sequence is one-hot
-            if not self.__is_one_hot(value):
+            if not is_one_hot(value):
                 raise ValueError('you must add a one-hot array to the '
                                  'LabelDict')
             # and then translate sequential array into a number
             value = argmax(value)
         if self.value_type is None:  # the first value to add
             self.value_type = type(value)
+            return value
         elif self.value_type == type(value):
             return value
         else:
