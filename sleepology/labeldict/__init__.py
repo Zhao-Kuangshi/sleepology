@@ -11,6 +11,7 @@ from .basedict import BaseDict
 from .classdict import ClassDict
 from .gradedict import GradeDict
 from .valuedict import ValueDict
+from .utils import *
 
 
 str_type = {
