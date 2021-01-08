@@ -1,14 +1,40 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
+"""
+Created on Fri Jan  8 11:28:23 2021
+
+@author: Zhao Kuangshi
+"""
+
 import os
 import json
 import numpy as np
 from collections.abc import Iterable
 from typing import List, Tuple, Dict, Union, Sequence
-from .utils import is_one_hot, argmax
-from .exceptions import LabelValueConflictError
+
+from ..utils import is_one_hot, argmax
+from ..exceptions import LabelValueConflictError
+
+from .basedict import BaseDict
+
+# Annote the types of labels and values
+LabelType = Union[int,
+                  float,
+                  str,
+                  Tuple[int, int],
+                  Tuple[float, float]]
+ValueType = Union[int,
+                  List[int],
+                  List[bool],
+                  float]
+type_str = {
+    int: 'int',
+    float: 'float',
+    str: 'str',
+    tuple: 'tuple'
+    }
 
 
-class ClassDict(object):
+class ClassDict(BaseDict):
     '''
     Label dictionary for classification.
 
@@ -27,19 +53,8 @@ class ClassDict(object):
     of labels is different. It will not affect the final label classification
     results.
     '''
-    # Annote the types of labels and values
-    LabelType = Union[int,
-                      float,
-                      str,
-                      Tuple[int, int],
-                      Tuple[float, float],
-                      List[str],
-                      List[int]]
-    ValueType = Union[int,
-                      List[int],
-                      List[bool],
-                      float]
     def __init__(self, *content):
+        self.dict_type = 'ClassDict'
         self.dict = {}
         self.reverse_dict = {}
         self.label_type = None
@@ -92,7 +107,7 @@ class ClassDict(object):
         self.reverse_add(value, label)
         self.length += 1
 
-    def trans(self, label: LabelType):
+    def trans(self, label: Union[LabelType, List[LabelType]]):
         if self.length <= 2:
             return self.get_number(label)
         else:
@@ -183,10 +198,24 @@ class ClassDict(object):
             self.reverse_dict[self.dict[key]] = key
         self.length = len(self.dict)
 
-    def save(self, save_path):
-        # 2020-3-2 将步骤保存至指定路径
+    def save(self, save_path: str) -> None:
+        '''
+        Save the LabelDict.
+
+        Parameters
+        ----------
+        save_path : str
+            The target for saving LabelDict.
+        '''
+        save_path = os.path.expenduser(save_path)
+        struct = {"dict type": self.dict_type,
+                  "dict": self.dict,
+                  "reverse_dict": self.reverse_dict,
+                  "label_type": type_str[self.label_type],
+                  "value_type": type_str[self.value_type],
+                  "length": self.length}
         with open(save_path, 'w') as f:
-            json.dump(self.dict, f)
+            json.dump(struct , f)
 
     def reverse_add(self, key: ValueType, value: LabelType,
                     alias: bool = False) -> None:

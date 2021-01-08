@@ -2,7 +2,7 @@
 """
 Created on Thu Aug 13 19:02:45 2020
 
-@author: 赵匡是
+@author: Zhao Kuangshi
 """
 
 from __future__ import print_function

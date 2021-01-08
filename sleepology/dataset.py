@@ -2,7 +2,7 @@
 """
 Created on Sat Mar  7 11:31:23 2020
 
-@author: chizh
+@author: Zhao Kuangshi
 """
 from .source import *
 from .utils import total_size
