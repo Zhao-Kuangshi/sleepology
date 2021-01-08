@@ -9,7 +9,7 @@ import os
 import json
 import numpy as np
 from collections.abc import Iterable
-from typing import List, Tuple, Dict, Union, Sequence
+from typing import List, Tuple, Dict, Union, Sequence, Optional
 
 from ..utils import is_one_hot, argmax
 from ..exceptions import LabelValueConflictError
@@ -59,7 +59,7 @@ class ClassDict(BaseDict):
         self.reverse_dict = {}
         self.label_type = None
         self.value_type = int
-        self.length = 0 # 2020-3-2 提供当前字典的长度信息，也是one_hot数组的长度参考
+        self.length = 0 # provide the length of current dict
         if len(content) == 1 and isinstance(content[0], str) and \
             os.path.exists(content[0]):
             self.load(content[0])
@@ -72,8 +72,11 @@ class ClassDict(BaseDict):
         else:
             return (1,)
 
-    def labels(self):
+    def labels(self) -> list:
         return list(self.dict.keys())
+
+    def __value(self) -> list:
+        return sorted(list(self.reverse_dict.keys()))
     
     def add(self, *content):
         if len(content) == 1 and isinstance(content[0], dict):
@@ -107,13 +110,15 @@ class ClassDict(BaseDict):
         self.reverse_add(value, label)
         self.length += 1
 
-    def trans(self, label: Union[LabelType, List[LabelType]]):
+    def trans(self, label: Union[LabelType, List[LabelType]],
+              array_type: type = int,
+              dense: bool = False):
         if self.length <= 2:
-            return self.get_number(label)
+            return self.get_number(label, dense)
         else:
-            return self.get_array(label)
+            return self.get_array(label, array_type, dense)
 
-    def get_value(self, label):
+    def get_value(self, label: Optional[LabelType], dense: bool = False):
         if isinstance(label, list):
             if len(label) != 1:
                 raise TypeError(
@@ -121,10 +126,15 @@ class ClassDict(BaseDict):
                     ' None.')
         elif label is None:  # request padding
             return -1  # `-1` represents padding
+        elif dense:
+            return self.__value().index(self.dict[label])
         else:
             return self.dict[label]
 
-    def get_array(self, label, array_type = int):
+    def get_array(self, 
+                  label: Union[LabelType, List[LabelType], None],
+                  array_type: type = int,
+                  dense: bool = False):
         '''
         Get one-hot or N-hot array according to given label. If `array_type` is
         `None`, the function will return a number directly.
@@ -169,10 +179,19 @@ class ClassDict(BaseDict):
             if label is None:  # request padding
                 arr = np.asarray([False] * self.length)
                 return arr.astype(array_type)
-            else:
+            elif dense:
+                val = self.__value()
                 if isinstance(label, str):
                     label = [label]
                 arr = np.asarray([False] * self.length)
+                for l in label:
+                    arr[val.index(self.dict[l])] = True
+                return arr.astype(array_type)
+            else:
+                if isinstance(label, str):
+                    label = [label]
+                arr = np.asarray(
+                    [False] * (max(list(self.reverse_dict.keys())) + 1))
                 for l in label:
                     arr[self.dict[l]] = True
                 return arr.astype(array_type)
@@ -189,14 +208,6 @@ class ClassDict(BaseDict):
             return label[0]
         elif len(label) > 1:
             return label
-
-    def load(self, load_path):
-        # 2020-2-13 从指定路径加载步骤
-        with open(load_path, 'r') as f:
-            self.dict = json.load(fp = f)
-        for key in self.dict:
-            self.reverse_dict[self.dict[key]] = key
-        self.length = len(self.dict)
 
     def save(self, save_path: str) -> None:
         '''
