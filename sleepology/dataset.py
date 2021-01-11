@@ -7,7 +7,7 @@ Created on Sat Mar  7 11:31:23 2020
 from .source import *
 from .utils import total_size
 # from .procedure import Procedure
-from .label_dict import LabelDict
+from .labeldict import BaseDict, AASM, ClassDict
 from .exception_logger import ExceptionLogger
 from .exceptions import DataStateError, BrokenTimestepError
 
@@ -19,6 +19,7 @@ import math
 import os
 import logging
 import traceback
+from typing import Union, Dict
 
 
 os.environ["HDF5_USE_FILE_LOCKING"] = 'FALSE'
@@ -38,8 +39,7 @@ class Dataset(object):
     ERROR = -1
     
     def __init__(self, dataset_name, save_path, comment = '', 
-                label_dict = os.path.join(package_root, 'labeltemplate',
-                                          'aasm.labeltemplate'),
+                labeldict: Union[BaseDict, Dict[str, BaseDict], None] = None,
                 mode = 'memory'):
         '''
         Create a new `Dataset()`
@@ -53,10 +53,11 @@ class Dataset(object):
             Where you want to save this dataset.
         comment : str, optional
             A comment string to describe your dataset. The default is ''.
-        label_dict : path-like, optional
+        labeldict : instance of LabelDict OR a dictionary of LabelDict whose
+            keys are label names, optional
+
             A dictionary to manage labels of dataset. It will translate human-
-            readable label to the style which fits machine learning. The
-            default is the AASM protocal.
+            readable label to the style which fits machine learning.
         mode : {'memory', 'disk'}, optional
             For the faster speed, 'memory' mode will process all the data in
             the memory. But if you have a huge dataset which exceeds or will
@@ -71,12 +72,14 @@ class Dataset(object):
         if self.path is not None and (dataset_name is not None):
             self.set_name(dataset_name)
         self.comment = comment
-        self.label_dict = {}
-        if isinstance(label_dict, str):
-            self.set_label_dict('LABEL', label_dict)
-        elif isinstance(label_dict, dict):
-            for label in label_dict.keys():
-                self.set_label_dict(label, label_dict[label])
+        # set LabelDict
+        self.labeldict = {}
+        if isinstance(labeldict, BaseDict):
+            self.set_labeldict('LABEL', labeldict)
+        elif isinstance(labeldict, dict):
+            for label in labeldict.keys():
+                self.set_labeldict(label, labeldict[label])
+        # set mode
         if mode.lower() == 'memory':
             self.disk_mode = False
         else:
@@ -99,8 +102,8 @@ class Dataset(object):
         else:
             return self.df
 
-    def set_label_dict(self, label_name, label_dict):
-        self.label_dict[label_name] = LabelDict(label_dict)
+    def set_labeldict(self, label_name, labeldict):
+        self.labeldict[label_name] = labeldict
 
     ### NAME ###
 
@@ -582,9 +585,9 @@ class Dataset(object):
                     for e in to_be_del:
                         self.__del_epoch(data_name, e)
         else:
-            # When no inputs, all the labels NOT IN LABEL_DICT will be exclude.
+            # When no inputs, all the labels NOT IN LABELDICT will be exclude.
             for label_name in self.labels:
-                allowed_label = self.label_dict[label_name].labels()
+                allowed_label = self.labeldict[label_name].labels()
                 for data_name in self.get_data():
                     if self.__get_state(data_name) == Dataset.ERROR:
                         continue
@@ -862,7 +865,7 @@ class Dataset(object):
         if data_name is None:
             data_name = self.get_data()
         if label is None:
-            label = self.label_dict[label_name].labels()
+            label = self.labeldict[label_name].labels()
         elif not isinstance(label, list):
             label = [label]
         for l in label:
@@ -1391,7 +1394,7 @@ class Dataset(object):
                 y = [y]
             for i in y:
                 y_samp.append(
-                    self.label_dict[i].get_array(
+                    self.labeldict[i].trans(
                         self.get_condition(test_data_name, i),
                         array_type=array_type))
             if len(y_samp) == 1:
@@ -1525,7 +1528,7 @@ class Dataset(object):
                 return self.get_feature(data_name, epoch, element_name)
             # == label ==
             elif self.elements[element_name] == 'label':
-                return self.label_dict[element_name].get_array( \
+                return self.labeldict[element_name].trans( \
                         self.get_label(data_name, epoch, element_name),
                         array_type=array_type)
         # ===== with timestep =====
@@ -1555,8 +1558,8 @@ class Dataset(object):
             # == label ==
             elif self.elements[element_name] == 'label':
                 dtype = 'int32'
-                sample_shape = self.label_dict[element_name].shape()
-                r = np.asarray([self.label_dict[element_name].get_array( \
+                sample_shape = self.labeldict[element_name].shape()
+                r = np.asarray([self.labeldict[element_name].trans( \
                         self.get_label(data_name, i, element_name),
                         array_type=array_type)
                         for i in epoch_list[lower : upper]])
@@ -1593,11 +1596,11 @@ class Dataset(object):
                                  + self.__get_state(data_name, True) + '`.')
         # label
         if self.elements[element_name] == 'label':
-            return self.label_dict[element_name].get_array( \
+            return self.labeldict[element_name].trans( \
                         self.get_label(data_name, epoch, element_name),
                         array_type=array_type)
         elif self.elements[element_name] == 'condition':
-            return self.label_dict[element_name].get_array( \
+            return self.labeldict[element_name].trans( \
                         self.get_condition(data_name, 
                                            condition_type=element_name),
                         array_type=array_type)
@@ -1632,10 +1635,10 @@ class Dataset(object):
                 dtype = 'float32'
             else:
                 if timespan == 1:
-                    sample_shape = self.label_dict[element_name].shape()
+                    sample_shape = self.labeldict[element_name].shape()
                 else:
                     sample_shape = (timespan, ) + \
-                        self.label_dict[element_name].shape()
+                        self.labeldict[element_name].shape()
                 dtype = 'int32'
             x = np.full((max_len, ) + sample_shape, -1, dtype=dtype)
             trunc = rst[-max_len:]
@@ -1676,9 +1679,9 @@ class Dataset(object):
         # 保存标签字典
         if self.has_label:
             disk_file.create_group('label_dict')
-            for label_name in self.label_dict.keys():
+            for label_name in self.labeldict.keys():
                 disk_file['label_dict'].create_group(label_name)
-                tem = self.label_dict[label_name].label2array
+                tem = self.labeldict[label_name].dict
                 for label in tem:
                     disk_file['label_dict'][label_name].create_dataset(label, data = tem[label]) # 2020-3-5 存的是int
 
@@ -1723,9 +1726,9 @@ class Dataset(object):
         # 获取标签字典
         if 'label_dict' in disk_file.keys():
             for label_name in disk_file['label_dict'].keys():
-                self.label_dict[label_name] = LabelDict()
+                self.labeldict[label_name] = ClassDict()
                 for label in disk_file['label_dict'][label_name].keys():
-                    self.label_dict[label_name].add_label(label, order = int(disk_file['label_dict'][label_name][label][()])) # 2020-3-5 存的是int
+                    self.labeldict[label_name].add(label, int(disk_file['label_dict'][label_name][label][()])) # 2020-3-5 存的是int
 
     def df_load_dataset_0_2(self, disk_file):
         # 获取数据

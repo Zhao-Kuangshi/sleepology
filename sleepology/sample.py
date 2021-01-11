@@ -360,20 +360,20 @@ class Sample(object):
         if not self.__preparation:
             self.init()
 
-    def __check_label_dict(self, dataset):
+    def __check_labeldict(self, dataset):
         if not self.__autoencoder:
             for x in self.get_x():
                 if dataset.elements[x] == 'label' and x not in \
-                    dataset.label_dict:
+                    dataset.labeldict:
                     raise LackOfLabelDictError('The element `{0}` does not '
-                                               'have a label_dict. Please use '
+                                               'have a labeldict. Please use '
                                                '`Dataset.one_hot()` function '
                                                'to create one or manually set '
                                                'one.'.format(x))
             for y in self.get_y():
-                if y not in dataset.label_dict:
+                if y not in dataset.labeldict:
                     raise LackOfLabelDictError('The element `{0}` does not '
-                                               'have a label_dict. Please use '
+                                               'have a labeldict. Please use '
                                                '`Dataset.one_hot()` function '
                                                'to create one or manually set '
                                                'one.'.format(y))
@@ -519,7 +519,7 @@ class Sample(object):
 
             # check dataset
             self.__check_dataset(dataset)
-            self.__check_label_dict(dataset)
+            self.__check_labeldict(dataset)
         except Exception as e:
             del self.mode
             raise e
