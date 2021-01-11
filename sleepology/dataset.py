@@ -1365,7 +1365,9 @@ class Dataset(object):
 
     def sample_data(self, data_name, lst, tmin=0, tmax=0, data_padding=True,
                     max_len=None, epoch_padding=False, test_data_name=None,
-                    autoencoder=False, array_type=int, concat:bool=False):
+                    autoencoder=False, array_type=int, concat:bool=False,
+                    x_dict: Dict[str, BaseDict] = {},
+                    y_dict: Dict[str, BaseDict] = {}):
         if test_data_name is None:
             test_data_name = data_name
 
@@ -1405,7 +1407,9 @@ class Dataset(object):
 
     def sample_epoch(self, data_name, epoch, lst, tmin=0, tmax=0,
                     epoch_padding=False, test_data_name=None, test_epoch=None,
-                    autoencoder=False, array_type=int, concat:bool=False):
+                    autoencoder=False, array_type=int, concat:bool=False,
+                    x_dict: Dict[str, BaseDict] = {},
+                    y_dict: Dict[str, BaseDict] = {}):
         if test_data_name is None:
             test_data_name = data_name
             test_epoch = epoch
@@ -1443,7 +1447,8 @@ class Dataset(object):
 
     def sample_epoched_x(self, data_name:str, epoch:int, element_name:str,
                          tmin:int=0, tmax:int=0, padding:bool=False,
-                         array_type:type=int, concat:bool=False):
+                         array_type:type=int, concat:bool=False,
+                         x_dict: Dict[str, BaseDict] = {}):
         '''
         A low-level method to sample one epoch according to parameters.
 
@@ -1587,7 +1592,8 @@ class Dataset(object):
             logging.debug(r.shape)
             return r
 
-    def sample_epoched_y(self, data_name, epoch, element_name, array_type=int):
+    def sample_epoched_y(self, data_name, epoch, element_name, array_type=int,
+                         y_dict: Dict[str, BaseDict] = {}):
         # check state
         if self.__get_state(data_name) < Dataset.PREPROCESSED:
             raise DataStateError('You cannot sample from a data not correctly '
@@ -1611,7 +1617,7 @@ class Dataset(object):
     
     def sample_serial_x(self, data_name, element_name, tmin, tmax,
                         data_padding, max_len, epoch_padding, array_type=int,
-                        concat:bool=False):
+                        concat:bool=False, x_dict: Dict[str, BaseDict] = {}):
         timespan = abs(tmin) + tmax + 1
         rst = []
         for epoch in self.get_epochs(data_name):
