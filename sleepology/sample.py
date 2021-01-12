@@ -261,7 +261,7 @@ class Sample(object):
             self.get_x(): # assert x == y when using autoencoder
             raise ValueError('When using autoencoder, `y` must be `x` itself.')
         self.y = y
-        self.y_dict
+        self.y_dict = labeldict
 
     def get_y(self):
         try:

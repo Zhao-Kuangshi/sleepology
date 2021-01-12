@@ -6,6 +6,7 @@ Created on Wed Aug 26 20:07:43 2020
 """
 from .exceptions import ModeError, LackOfParameterError, BrokenTimestepError,\
     KFoldError, LackOfLabelDictError, TaskError
+from .labeldict import BaseDict
 
 import math
 import json
@@ -14,6 +15,7 @@ import logging
 import numpy as np
 import tableprint as tp
 from sklearn.model_selection import ShuffleSplit
+from typing import Dict, Union
 
 def flatten(seq):
     return [i for a in seq for i in a]
@@ -231,7 +233,7 @@ class Sample(object):
         '''
         self.concat = concat
 
-    def set_x(self, x):
+    def set_x(self, x, labeldict: Dict[str, BaseDict] = {}):
         # 不强求类型。可以是dataset的label甚至是condition(比如用很多condition来判断疾病(age, sex)→diagnose
         self.__check_editable()
         if isinstance(x, str):
@@ -240,6 +242,7 @@ class Sample(object):
             self.x = x
         if self.__autoencoder:
             self.set_y(self.get_x())
+        self.x_dict = labeldict
 
     def get_x(self):
         try:
@@ -247,7 +250,7 @@ class Sample(object):
         except:
             return None
             
-    def set_y(self, y):
+    def set_y(self, y, labeldict: Dict[str, BaseDict] = {}):
         # unit是data就不是epoched，unit是epoch就是epoched。或者说，如果unit是data，就从condition里找，如果unit是epoch就从label里找。
         self.__check_editable()
         if isinstance(y, str):
@@ -258,6 +261,7 @@ class Sample(object):
             self.get_x(): # assert x == y when using autoencoder
             raise ValueError('When using autoencoder, `y` must be `x` itself.')
         self.y = y
+        self.y_dict = labeldict
 
     def get_y(self):
         try:
@@ -360,20 +364,20 @@ class Sample(object):
         if not self.__preparation:
             self.init()
 
-    def __check_label_dict(self, dataset):
+    def __check_labeldict(self, dataset):
         if not self.__autoencoder:
             for x in self.get_x():
                 if dataset.elements[x] == 'label' and x not in \
-                    dataset.label_dict:
+                    dataset.labeldict:
                     raise LackOfLabelDictError('The element `{0}` does not '
-                                               'have a label_dict. Please use '
+                                               'have a labeldict. Please use '
                                                '`Dataset.one_hot()` function '
                                                'to create one or manually set '
                                                'one.'.format(x))
             for y in self.get_y():
-                if y not in dataset.label_dict:
+                if y not in dataset.labeldict:
                     raise LackOfLabelDictError('The element `{0}` does not '
-                                               'have a label_dict. Please use '
+                                               'have a labeldict. Please use '
                                                '`Dataset.one_hot()` function '
                                                'to create one or manually set '
                                                'one.'.format(y))
@@ -519,7 +523,7 @@ class Sample(object):
 
             # check dataset
             self.__check_dataset(dataset)
-            self.__check_label_dict(dataset)
+            self.__check_labeldict(dataset)
         except Exception as e:
             del self.mode
             raise e
@@ -881,7 +885,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -893,7 +899,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -906,7 +914,9 @@ class Sample(object):
                         test_epoch=self.train_y[idx][1],
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -919,7 +929,9 @@ class Sample(object):
                         test_data_name=self.train_y[idx],
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
             except BrokenTimestepError:
                 continue
 
@@ -953,7 +965,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'data' and not self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -965,7 +979,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'epoch' and self.disturb:
                     yield self.dataset.sample_epoch(
                         item[0],
@@ -978,7 +994,9 @@ class Sample(object):
                         test_epoch=self.test_y[idx][1],
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'data' and self.disturb:
                     yield self.dataset.sample_data(
                         item,
@@ -991,7 +1009,9 @@ class Sample(object):
                         test_data_name=self.test_y[idx],
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
             except BrokenTimestepError:
                 continue
 
@@ -1060,7 +1080,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'data':
                     yield self.dataset.sample_data(
                         item,
@@ -1072,7 +1094,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
             except BrokenTimestepError:
                 continue
     
@@ -1155,7 +1179,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
                 elif self.get_unit() == 'data':
                     yield self.dataset.sample_data(
                         item,
@@ -1167,7 +1193,9 @@ class Sample(object):
                         epoch_padding=self.epoch_padding,
                         autoencoder=self.__autoencoder,
                         array_type=self.array_type,
-                        concat=self.concat)
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
             except BrokenTimestepError:
                 continue
 

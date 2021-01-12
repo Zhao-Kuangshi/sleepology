@@ -5,7 +5,6 @@ sleepology/combine.py
 sleepology/dataset.py
 sleepology/exception_logger.py
 sleepology/exceptions.py
-sleepology/label_dict.py
 sleepology/model.py
 sleepology/preprocess.py
 sleepology/procedure.py
@@ -18,4 +17,3 @@ sleepology.egg-info/SOURCES.txt
 sleepology.egg-info/dependency_links.txt
 sleepology.egg-info/requires.txt
 sleepology.egg-info/top_level.txt
-sleepology/labeltemplate/aasm.labeltemplate

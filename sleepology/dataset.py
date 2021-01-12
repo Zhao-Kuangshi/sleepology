@@ -1380,7 +1380,7 @@ class Dataset(object):
                                                data_padding, max_len,
                                                epoch_padding,
                                                array_type=array_type,
-                                               concat=concat))
+                                               concat=concat, x_dict=x_dict))
         if len(x_samp) == 1:
             x_samp = x_samp[0]
         else:
@@ -1396,9 +1396,12 @@ class Dataset(object):
                 y = [y]
             for i in y:
                 y_samp.append(
-                    self.labeldict[i].trans(
-                        self.get_condition(test_data_name, i),
-                        array_type=array_type))
+                    # TODO: v0.2.62
+                    self.__samp_condtion(test_data_name, i,
+                                         array_type, y_dict))
+                    # self.labeldict[i].trans(
+                    #     self.get_condition(test_data_name, i),
+                    #     array_type=array_type))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
             else:
@@ -1422,7 +1425,7 @@ class Dataset(object):
             x_samp.append(self.sample_epoched_x(data_name, epoch, i,
                                                 tmin, tmax, epoch_padding,
                                                 array_type=array_type,
-                                                concat=concat))
+                                                concat=concat, x_dict=x_dict))
         if len(x_samp) == 1:
             x_samp = x_samp[0]
         else:
@@ -1438,7 +1441,8 @@ class Dataset(object):
                 y = [y]
             for i in y:
                 y_samp.append(self.sample_epoched_y(test_data_name, test_epoch,
-                                                    i, array_type=array_type))
+                                                    i, array_type=array_type,
+                                                    y_dict=y_dict))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
             else:
@@ -1533,9 +1537,12 @@ class Dataset(object):
                 return self.get_feature(data_name, epoch, element_name)
             # == label ==
             elif self.elements[element_name] == 'label':
-                return self.labeldict[element_name].trans( \
-                        self.get_label(data_name, epoch, element_name),
-                        array_type=array_type)
+                # TODO: v0.2.62
+                return self.__samp_label(data_name, epoch,
+                                         element_name, array_type, x_dict)
+                # return self.labeldict[element_name].trans( \
+                #         self.get_label(data_name, epoch, element_name),
+                #         array_type=array_type)
         # ===== with timestep =====
         else:
             # check timespan
@@ -1561,13 +1568,18 @@ class Dataset(object):
                 r = np.asarray([self.get_feature(data_name, i, element_name) 
                               for i in epoch_list[lower : upper]])
             # == label ==
+            # TODO: v0.2.62
             elif self.elements[element_name] == 'label':
                 dtype = 'int32'
                 sample_shape = self.labeldict[element_name].shape()
-                r = np.asarray([self.labeldict[element_name].trans( \
-                        self.get_label(data_name, i, element_name),
-                        array_type=array_type)
+                r = np.asarray([self.__samp_label(data_name, i,
+                                                  element_name, array_type,
+                                                  x_dict)
                         for i in epoch_list[lower : upper]])
+                # r = np.asarray([self.labeldict[element_name].trans( \
+                #         self.get_label(data_name, i, element_name),
+                #         array_type=array_type)
+                #         for i in epoch_list[lower : upper]])
             if len(r) < timespan:
                 if not padding:
                     raise BrokenTimestepError()
@@ -1601,15 +1613,21 @@ class Dataset(object):
                                  + '` has a state `' 
                                  + self.__get_state(data_name, True) + '`.')
         # label
+        # TODO: v0.2.62
         if self.elements[element_name] == 'label':
-            return self.labeldict[element_name].trans( \
-                        self.get_label(data_name, epoch, element_name),
-                        array_type=array_type)
+            return self.__samp_label(data_name, epoch, element_name,
+                                     array_type, y_dict)
+            # return self.labeldict[element_name].trans( \
+            #             self.get_label(data_name, epoch, element_name),
+            #             array_type=array_type)
+        # TODO: v0.2.62
         elif self.elements[element_name] == 'condition':
-            return self.labeldict[element_name].trans( \
-                        self.get_condition(data_name, 
-                                           condition_type=element_name),
-                        array_type=array_type)
+            return self.__samp_condition(data_name, element_name,
+                                         array_type, y_dict)
+            # return self.labeldict[element_name].trans( \
+            #             self.get_condition(data_name, 
+            #                                condition_type=element_name),
+            #             array_type=array_type)
         else:
             raise ValueError('The input element ' + element_name + 'is a `'
                              + self.elements[element_name] + '`. It cannot'
@@ -1626,7 +1644,8 @@ class Dataset(object):
                                                  element_name,
                                                  tmin, tmax, epoch_padding,
                                                  array_type=array_type,
-                                                 concat=concat))
+                                                 concat=concat,
+                                                 x_dict=x_dict))
             except BrokenTimestepError:
                 continue
         if data_padding:
@@ -1659,6 +1678,30 @@ class Dataset(object):
         else:
             rst = np.asarray(rst)
         return rst
+
+    def __samp_condtion(self, data_name: str, condition_type: str,
+                        array_type: type,
+                        labeldict: Dict[str, BaseDict] = {}) -> np.ndarray:
+        if condition_type in labeldict:
+            return labeldict[condition_type].trans(
+                self.get_condition(data_name, condition_type),
+                array_type=array_type)
+        else:
+            return self.labeldict[condition_type].trans(
+                self.get_condition(data_name, condition_type),
+                array_type=array_type) 
+
+    def __samp_label(self, data_name: str, epoch: int, label_type: str,
+                     array_type: type,
+                     labeldict: Dict[str, BaseDict] = {}) -> Union[int, np.ndarray]:
+        if label_type in labeldict:
+            return labeldict[label_type].trans(
+                self.get_label(data_name, epoch, label_type),
+                array_type=array_type)
+        else:
+            return self.labeldict[label_type].trans(
+                self.get_label(data_name, epoch, label_type),
+                array_type=array_type)
 
     def memory_usage(self, unit = 'GB'):
         if self.disk_mode:
