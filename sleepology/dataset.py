@@ -1396,7 +1396,7 @@ class Dataset(object):
                 y = [y]
             for i in y:
                 y_samp.append(
-                    self.__samp_condtion(test_data_name, i,
+                    self.__samp_condition(test_data_name, i,
                                          array_type, y_dict))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
@@ -1657,7 +1657,7 @@ class Dataset(object):
             rst = np.asarray(rst)
         return rst
 
-    def __samp_condtion(self, data_name: str, condition_type: str,
+    def __samp_condition(self, data_name: str, condition_type: str,
                         array_type: type,
                         labeldict: Dict[str, BaseDict] = {}) -> np.ndarray:
         if condition_type in labeldict:
