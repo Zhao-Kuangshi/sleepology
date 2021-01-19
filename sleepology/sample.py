@@ -531,35 +531,48 @@ class Sample(object):
         # set dataset
         self.dataset = dataset
         self.dataset.shape_check()
-        if data_selection is None and self.get_unit() == 'epoch':
-            self.__selection = None
-            self.data_selection = self.dataset.select_epochs()
-        elif data_selection is None and self.get_unit() == 'data':
-            self.__selection = None
-            self.data_selection = self.dataset.select_data()
+        # === SELECT DATA ===
+        # # use all the data or epochs
+        if data_selection is None:
+            if self.get_unit() == 'epoch':
+                self.__selection = None
+                self.data_selection = self.dataset.select_epochs()
+            elif self.get_unit() == 'data':
+                self.__selection = None
+                self.data_selection = self.dataset.select_data()
+        # # select data
         else:
             # data_selection has parameter in form of dict
             self.__selection = data_selection
             self.data_selection = set()
+            # case: epoch
             if self.get_unit() == 'epoch':
-                for e in data_selection.keys():
-                    if self.data_selection and len(data_selection[e]) != 0:
+                for e in data_selection.keys():  # for each element
+                    # [1] there is already a subset of epochs in the
+                    # `self.data_selection` and the element `e` provides some
+                    # selection range.
+                    if self.data_selection and len(self.__selection[e]) != 0:
                         self.data_selection.intersection_update(
-                            self.dataset.select_epochs(e, data_selection[e]))
+                            set(self.dataset.select_epochs(e, data_selection[e]))
+                        )
+                    # [2] `self.data_selection` is an empty set
                     elif (not self.data_selection) and \
                         len(data_selection[e]) != 0:
                         self.data_selection = \
-                            self.dataset.select_epochs(e, data_selection[e])
+                            set(self.dataset.select_epochs(e, data_selection[e]))
+                    # [3] other situation
                     elif self.data_selection:
                         pass
                     else:
                         self.data_selection = \
                             self.dataset.select_epochs()
-            else:
-                for e in data_selection.keys():
+            # case: data
+            elif self.get_unit() == 'data':
+                for e in data_selection.keys():  # for each element
                     if self.data_selection and len(data_selection[e]) != 0:
                         self.data_selection.intersection_update(
-                            self.dataset.select_data(e, data_selection[e]))
+                            set(self.dataset.select_data(e, data_selection[e]))
+                        )
                     elif (not self.data_selection) and \
                         len(data_selection[e]) != 0:
                         self.data_selection = \

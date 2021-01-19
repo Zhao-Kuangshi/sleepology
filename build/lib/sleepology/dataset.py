@@ -1396,12 +1396,8 @@ class Dataset(object):
                 y = [y]
             for i in y:
                 y_samp.append(
-                    # TODO: v0.2.62
                     self.__samp_condtion(test_data_name, i,
                                          array_type, y_dict))
-                    # self.labeldict[i].trans(
-                    #     self.get_condition(test_data_name, i),
-                    #     array_type=array_type))
             if len(y_samp) == 1:
                 y_samp = y_samp[0]
             else:
@@ -1537,12 +1533,8 @@ class Dataset(object):
                 return self.get_feature(data_name, epoch, element_name)
             # == label ==
             elif self.elements[element_name] == 'label':
-                # TODO: v0.2.62
                 return self.__samp_label(data_name, epoch,
                                          element_name, array_type, x_dict)
-                # return self.labeldict[element_name].trans( \
-                #         self.get_label(data_name, epoch, element_name),
-                #         array_type=array_type)
         # ===== with timestep =====
         else:
             # check timespan
@@ -1568,7 +1560,6 @@ class Dataset(object):
                 r = np.asarray([self.get_feature(data_name, i, element_name) 
                               for i in epoch_list[lower : upper]])
             # == label ==
-            # TODO: v0.2.62
             elif self.elements[element_name] == 'label':
                 dtype = 'int32'
                 sample_shape = self.labeldict[element_name].shape()
@@ -1576,10 +1567,6 @@ class Dataset(object):
                                                   element_name, array_type,
                                                   x_dict)
                         for i in epoch_list[lower : upper]])
-                # r = np.asarray([self.labeldict[element_name].trans( \
-                #         self.get_label(data_name, i, element_name),
-                #         array_type=array_type)
-                #         for i in epoch_list[lower : upper]])
             if len(r) < timespan:
                 if not padding:
                     raise BrokenTimestepError()
@@ -1613,21 +1600,12 @@ class Dataset(object):
                                  + '` has a state `' 
                                  + self.__get_state(data_name, True) + '`.')
         # label
-        # TODO: v0.2.62
         if self.elements[element_name] == 'label':
             return self.__samp_label(data_name, epoch, element_name,
                                      array_type, y_dict)
-            # return self.labeldict[element_name].trans( \
-            #             self.get_label(data_name, epoch, element_name),
-            #             array_type=array_type)
-        # TODO: v0.2.62
         elif self.elements[element_name] == 'condition':
             return self.__samp_condition(data_name, element_name,
                                          array_type, y_dict)
-            # return self.labeldict[element_name].trans( \
-            #             self.get_condition(data_name, 
-            #                                condition_type=element_name),
-            #             array_type=array_type)
         else:
             raise ValueError('The input element ' + element_name + 'is a `'
                              + self.elements[element_name] + '`. It cannot'
