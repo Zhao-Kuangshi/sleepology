@@ -114,7 +114,7 @@ class ClassDict(BaseDict):
               array_type: type = int,
               dense: bool = False):
         if self.length <= 2:
-            return self.get_number(label, dense)
+            return self.get_value(label, dense)
         else:
             return self.get_array(label, array_type, dense)
 
@@ -171,7 +171,7 @@ class ClassDict(BaseDict):
         '''
         # if array_type is None, return a number directly
         if array_type is None:
-            self.get_number(label)
+            self.get_value(label)
         # return N-hot array
         else:
             if isinstance(label, list) and len(label) == 0:
