@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='sleepology',
-    version='0.2.65', # TODO: Do not forget changing version!
+    version='0.2.66', # TODO: Do not forget changing version!
     url='https://github.com/Zhao-Kuangshi/sleepology',
     author = 'Zhao-Kuangshi',
     author_email = 'contact@zhaokuangshi.cn',

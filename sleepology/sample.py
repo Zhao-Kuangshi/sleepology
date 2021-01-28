@@ -494,9 +494,9 @@ class Sample(object):
             Define the purpose why you sample. If you want to train a model,
             the sampled data will be balanced and split into train set and
             test set. Else you want to use an existed model to predict new
-            data, the `Sample` process should not do any change to data, and it
-            will definitely no `Sample.y()` because the correct answer has not
-            provided. The default is 'train'.
+            data, the `Sample` process should not perform any change to data,
+            and it will definitely no `Sample.y()` because the correct answer
+            has not provided. The default is 'train'.
 
         Raises
         ------
@@ -1212,7 +1212,106 @@ class Sample(object):
             except BrokenTimestepError:
                 continue
 
-    def sample(self):
+    def sample(self, with_y: bool = False, with_index: bool = False,
+               generator: bool = True):
+        if generator:
+            logging.info('Use generator')
+            return self.sample_generator(with_y, with_index)
+        else:
+            logging.info('Do not use generator')
+            x_samp = []
+            y_samp = []
+            index_samp = []
+            for ret in self.sample_generator(with_y, with_index):
+                if not with_index and not with_y:
+                    x_samp.append(ret)
+                elif not with_index and with_y:
+                    x_samp.append(ret[0])
+                    y_samp.append(ret[1])
+                elif with_index and not with_y:
+                    x_samp.append(ret[0])
+                    index_samp.append(ret[1])
+                elif with_index and with_y:
+                    x_samp.append(ret[0][0])
+                    y_samp.append(ret[0][1])
+                    index_samp.append(ret[1])
+            if x_samp:
+                x_samp = np.asarray(x_samp)
+            if y_samp:
+                y_samp = np.asarray(y_samp)
+            # === assemble return tuple ===
+            if not with_index and not with_y:
+                rst = x_samp
+            elif not with_index and with_y:
+                rst = (x_samp, y_samp)
+            elif with_index and not with_y:
+                rst = (x_samp, index_samp)
+            elif with_index and with_y:
+                rst = (x_samp, y_samp, index_samp)
+            return rst
+
+    def sample_generator(self, with_y: bool = False, with_index: bool = False):
         self.__check_mode('predict')
-        pass
-    
+        # === set element ===
+        element_x = self.get_x()
+        element_y = None
+        if with_y:
+            element_y = self.get_y()
+        for idx, item in enumerate(self.data_selection):
+            try:
+                if self.get_unit() == 'epoch' and not with_index:
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (element_x, element_y),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type,
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
+                elif self.get_unit() == 'data' and not with_index:
+                    yield self.dataset.sample_data(
+                        item,
+                        (element_x, element_y),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type,
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict)
+                elif self.get_unit() == 'epoch' and with_index:
+                    yield self.dataset.sample_epoch(
+                        item[0],
+                        item[1],
+                        (element_x, element_y),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(), 
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type,
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict), item
+                elif self.get_unit() == 'data' and with_index:
+                    yield self.dataset.sample_data(
+                        item,
+                        (element_x, element_y),
+                        tmin=self.get_tmin(),
+                        tmax=self.get_tmax(),
+                        data_padding=self.data_padding,
+                        max_len=self.max_len,
+                        epoch_padding=self.epoch_padding,
+                        autoencoder=self.__autoencoder,
+                        array_type=self.array_type,
+                        concat=self.concat,
+                        x_dict = self.x_dict,
+                        y_dict = self.y_dict), item
+            except BrokenTimestepError:
+                continue
